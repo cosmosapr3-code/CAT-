@@ -376,22 +376,25 @@ async function handleApi(request, env) {
   if (method === "GET" && path === "/api/health") {
     try {
       await getDb(env).prepare("SELECT 1 AS ok").first();
-      const legacyCharacters = await loadLegacyCharacters(env, request);
-      const allies = Array.isArray(legacyCharacters)
-        ? legacyCharacters.filter(character => character.side === "ally").length
-        : 0;
-      const enemies = Array.isArray(legacyCharacters)
-        ? legacyCharacters.filter(character => character.side === "enemy").length
-        : 0;
+      const legacyData = await loadLegacyGameData(env, request);
+      const chars = Array.isArray(legacyData?.characters) ? legacyData.characters : [];
+      const allies = chars.filter(character => character.side === "ally");
+      const enemies = chars.filter(character => character.side === "enemy");
+      const stages = Array.isArray(legacyData?.stages) ? legacyData.stages : [];
+      const evolutionForms = allies.reduce((total, character) =>
+        total + Math.max(0, (character.forms || []).length - 1), 0);
       return json({
         ok: true,
         service: "CAT大戦争 API",
         database: "connected",
         legacyCharacters: {
-          total: allies + enemies,
-          allies,
-          enemies,
-          loaded: allies === 40 && enemies === 69
+          total: chars.length,
+          allies: allies.length,
+          enemies: enemies.length,
+          enemyBook: enemies.filter(character => Boolean(character.encyclopediaImage)).length,
+          evolutionForms,
+          stages: stages.length,
+          loaded: allies.length === 40 && enemies.length === 69 && stages.length === 109
         }
       });
     } catch (e) {
