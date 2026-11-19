@@ -1,7 +1,7 @@
 
 {
   "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
-  "name": "cat-taisen",
+  "name": "cat",
   "main": "./_worker.js",
   "compatibility_date": "2026-11-19",
   "assets": {
