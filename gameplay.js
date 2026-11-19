@@ -251,7 +251,8 @@
   };
 
   makeUnit = function(c,side,x) {
-    const st=side==='ally'?unitStats(c):{hp:Number(c.hp||1),attack:Number(c.attack||0)};
+    const raw=side==='ally'?unitStats(c):{hp:Number(c.hp||1),attack:Number(c.attack||0)};
+    const st=side==='ally'?{hp:raw.hp*12,attack:raw.attack*10}:raw;
     return {char:c,side,x,y:274+Math.random()*12,hp:st.hp,maxHp:st.hp,attack:st.attack,attackTimer:.25,
       attackAnim:0,flash:0,stopped:0,weak:0,knockback:0,invuln:0,kbLeft:Math.max(1,Number(c.kb||1)),
       walkPhase:Math.random()*Math.PI*2,baseTimer:.25};
@@ -266,8 +267,8 @@
       if(st.spawned<Number(w.count||1)&&battle.time>=st.next){
         const c=charById(w.characterId);
         if(c&&c.side==='enemy'){
-          const e=makeUnit(c,'enemy',800+Math.random()*12),scale=Number(w.hpMultiplier||1)*Number(battle.stage.multiplier||1);
-          e.hp*=scale;e.maxHp=e.hp;e.attack*=Number(w.attackMultiplier||1)*Number(battle.stage.multiplier||1);battle.units.push(e);
+          const e=makeUnit(c,'enemy',800+Math.random()*12),scale=Number(w.hpMultiplier||1)*Number(battle.stage.multiplier||1)*.55;
+          e.hp*=scale;e.maxHp=e.hp;e.attack*=Number(w.attackMultiplier||1)*Number(battle.stage.multiplier||1)*.65;battle.units.push(e);
         }
         st.spawned++;st.next=battle.time+Math.max(1,Number(w.interval||10));
       }
@@ -286,7 +287,7 @@
         let damage=Math.max(1,u.attack*(u.weak>0?.55:1));const ab=Array.isArray(u.char.abilities)?u.char.abilities:[];
         if(ab.includes('lowHpBoost')&&u.hp<u.maxHp*.5)damage*=1.6;
         if(ab.includes('critical')&&Math.random()<.25)damage*=2.5;
-        u.attackAnim=.28;u.attackTimer=Math.max(.45,Number(u.char.cooldown||2));target.hp-=damage;target.flash=.22;
+        u.attackAnim=.28;u.attackTimer=Math.min(3.5,Math.max(.7,Number(u.char.cooldown||2)*.22));target.hp-=damage;target.flash=.22;
         battle.effects.push({kind:'hit',x:target.x,y:target.y-34,life:.24,max:.24,color:u.side==='ally'?'#f6c84a':'#e85a58',damage:Math.round(damage)});
         if(ab.includes('stop'))target.stopped=1.5;if(ab.includes('weaken'))target.weak=3;
         if(ab.includes('knockback')){target.knockback=.22;target.x+=target.side==='enemy'?25:-25;target.kbLeft=Math.max(0,target.kbLeft-1);}
@@ -297,7 +298,7 @@
         }
       } else if(!target){
         const baseX=u.side==='ally'?846:54,dist=Math.abs(baseX-u.x);
-        if(dist>42)u.x+=(u.side==='ally'?1:-1)*Math.max(8,Number(u.char.speed||2)*17)*dt;
+        if(dist>42){const rawSpeed=Number(u.char.speed||2);const runSpeed=u.side==='enemy'?Math.min(58,Math.max(18,rawSpeed*1.7)):Math.min(92,Math.max(14,rawSpeed*13));u.x+=(u.side==='ally'?1:-1)*runSpeed*dt;}
         else if(u.baseTimer<=0){
           const damage=Math.max(1,u.attack);if(u.side==='ally')battle.enemyBase-=damage;else battle.playerBase-=damage;
           u.baseTimer=Math.max(.6,Number(u.char.cooldown||2));u.attackAnim=.25;
