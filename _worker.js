@@ -235,7 +235,79 @@ function starterProfile(config) {
   };
 }
 
-async function loadConfig(env) {
+let legacyCharactersPromise = null;
+
+async function loadLegacyCharacters(env, request) {
+  if (!env.ASSETS) return null;
+  if (!legacyCharactersPromise) {
+    legacyCharactersPromise = (async () => {
+      const assetRequest = new Request(
+        new URL("/legacy-roster.json", request.url),
+        { method: "GET" }
+      );
+      const response = await env.ASSETS.fetch(assetRequest);
+      if (!response.ok) {
+        throw new Error("元のキャラクターデータを読み込めません: " + response.status);
+      }
+      const data = await response.json();
+      if (!Array.isArray(data.characters) || data.characters.length !== 109) {
+        throw new Error("元のキャラクターデータが109件そろっていません。");
+      }
+      return data.characters;
+    })();
+  }
+  try {
+    return await legacyCharactersPromise;
+  } catch (error) {
+    legacyCharactersPromise = null;
+    console.error("Legacy character roster load failed:", error);
+    return null;
+  }
+}
+
+function mergeCharacterRoster(legacyCharacters, savedCharacters) {
+  if (!Array.isArray(legacyCharacters) || !legacyCharacters.length) {
+    return Array.isArray(savedCharacters)
+      ? savedCharacters
+      : DEFAULT_CONFIG.characters;
+  }
+
+  const merged = new Map(legacyCharacters.map(character => [character.id, character]));
+  const builtIn = new Map(DEFAULT_CONFIG.characters.map(character => [character.id, character]));
+  const genericImages = new Set(["assets/images/cat.svg", "assets/images/enemy.png"]);
+
+  for (const saved of (Array.isArray(savedCharacters) ? savedCharacters : [])) {
+    if (!saved || typeof saved.id !== "string") continue;
+    const original = merged.get(saved.id);
+    if (!original) {
+      merged.set(saved.id, saved);
+      continue;
+    }
+
+    const stub = builtIn.get(saved.id);
+    const unchangedPlaceholder = stub &&
+      saved.name === stub.name &&
+      Number(saved.hp) === Number(stub.hp) &&
+      Number(saved.attack) === Number(stub.attack) &&
+      (!saved.image || saved.image === stub.image);
+    if (unchangedPlaceholder) continue;
+
+    const image = typeof saved.image === "string" &&
+      saved.image.startsWith("data:image/") ? saved.image :
+      (saved.image && !genericImages.has(saved.image) ? saved.image : original.image);
+
+    merged.set(saved.id, { ...original, ...saved, image });
+  }
+  return [...merged.values()];
+}
+
+async function loadConfig(env, request) {
+  const legacyCharacters = await loadLegacyCharacters(env, request);
+  const baseConfig = {
+    ...structuredClone(DEFAULT_CONFIG),
+    characters: legacyCharacters || DEFAULT_CONFIG.characters
+  };
+
   const row = await getDb(env)
     .prepare(
       "SELECT value_json FROM game_config WHERE config_key = 'main'"
@@ -243,14 +315,14 @@ async function loadConfig(env) {
     .first();
 
   if (!row?.value_json) {
-    return structuredClone(DEFAULT_CONFIG);
+    return baseConfig;
   }
 
   try {
     const saved = JSON.parse(row.value_json);
 
     return {
-      ...structuredClone(DEFAULT_CONFIG),
+      ...baseConfig,
       ...saved,
       economy: {
         ...DEFAULT_CONFIG.economy,
@@ -260,13 +332,12 @@ async function loadConfig(env) {
         ...DEFAULT_CONFIG.gachaRates,
         ...(saved.gachaRates || {})
       },
-      characters: Array.isArray(saved.characters)
-        ? saved.characters : DEFAULT_CONFIG.characters,
+      characters: mergeCharacterRoster(legacyCharacters, saved.characters),
       stages: Array.isArray(saved.stages)
         ? saved.stages : DEFAULT_CONFIG.stages
     };
   } catch {
-    return structuredClone(DEFAULT_CONFIG);
+    return baseConfig;
   }
 }
 
