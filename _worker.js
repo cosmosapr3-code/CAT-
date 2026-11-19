@@ -183,23 +183,17 @@ function getDb(env) {
 }
 
 function validateProfile(p) {
-  if (!p || typeof p !== "object" || Array.isArray(p)) return null;
-  const owned = [...new Set((Array.isArray(p.owned) ? p.owned : []).filter(x => typeof x === "string"))].slice(0, 500);
-  const team = [...new Set((Array.isArray(p.team) ? p.team : []).filter(x => typeof x === "string" && owned.includes(x)))].slice(0, 10);
-  const levelsIn = p.levels && typeof p.levels === "object" && !Array.isArray(p.levels) ? p.levels : {};
-  const levels = {};
-  for (const [id, value] of Object.entries(levelsIn).slice(0, 500)) levels[id] = Math.max(1, Math.min(100, Math.floor(Number(value) || 1)));
-  const formsIn = p.forms && typeof p.forms === "object" && !Array.isArray(p.forms) ? p.forms : {};
-  const forms = {};
-  for (const [id, value] of Object.entries(formsIn).slice(0, 100)) forms[id] = Math.max(1, Math.min(3, Math.floor(Number(value) || 1)));
-  const enemyBook = [...new Set((Array.isArray(p.enemyBook) ? p.enemyBook : []).filter(x => typeof x === "string"))].slice(0, 200);
-  return {
-    catChuru: Math.max(0, Math.min(1000000000, Math.floor(Number(p.catChuru) || 0))),
-    xp: Math.max(0, Math.min(1000000000, Math.floor(Number(p.xp) || 0))),
-    owned, team, levels, forms, enemyBook
-  };
-}
-function starterProfile(config) {
+  if(!p||typeof p!=="object"||Array.isArray(p))return null;
+  const owned=[...new Set((Array.isArray(p.owned)?p.owned:[]).filter(x=>typeof x==="string"))].slice(0,500);
+  const team=[...new Set((Array.isArray(p.team)?p.team:[]).filter(x=>typeof x==="string"&&owned.includes(x)))].slice(0,10);
+  const levelsIn=p.levels&&typeof p.levels==="object"&&!Array.isArray(p.levels)?p.levels:{};
+  const levels={};for(const [id,value] of Object.entries(levelsIn).slice(0,500))levels[id]=Math.max(1,Math.min(100,Math.floor(Number(value)||1)));
+  const formsIn=p.forms&&typeof p.forms==="object"&&!Array.isArray(p.forms)?p.forms:{};
+  const forms={};for(const [id,value] of Object.entries(formsIn).slice(0,100))forms[id]=Math.max(1,Math.min(3,Math.floor(Number(value)||1)));
+  const enemyBook=[...new Set((Array.isArray(p.enemyBook)?p.enemyBook:[]).filter(x=>typeof x==="string"))].slice(0,200);
+  return {catChuru:Math.max(0,Math.min(1000000000,Math.floor(Number(p.catChuru)||0))),
+    xp:Math.max(0,Math.min(1000000000,Math.floor(Number(p.xp)||0))),owned,team,levels,forms,enemyBook};
+}function starterProfile(config) {
   return {
     catChuru: Number(config.economy?.startingCatChuru ?? 1330),
     xp: Number(config.economy?.startingXp ?? 1250),
@@ -215,31 +209,24 @@ function starterProfile(config) {
 }
 
 let legacyGameDataPromise = null;
-
 async function loadLegacyGameData(env, request) {
   if (!env.ASSETS) return null;
-  if (!legacyGameDataPromise) {
-    legacyGameDataPromise = (async () => {
-      const assetRequest = new Request(new URL("/legacy-roster.json", request.url), { method: "GET" });
-      const response = await env.ASSETS.fetch(assetRequest);
-      if (!response.ok) throw new Error("元データを読み込めません: " + response.status);
-      const data = await response.json();
-      if (!Array.isArray(data.characters) ||
-          data.characters.filter(x => x.side === "ally").length !== 40 ||
-          data.characters.filter(x => x.side === "enemy").length !== 69 ||
-          !Array.isArray(data.stages) || data.stages.length !== 109) {
-        throw new Error("元データ（味方40・敵69・ステージ109）がそろっていません。");
-      }
-      return data;
-    })();
-  }
+  if (!legacyGameDataPromise) legacyGameDataPromise = (async () => {
+    const req = new Request(new URL("/legacy-roster.json", request.url), { method:"GET" });
+    const res = await env.ASSETS.fetch(req);
+    if (!res.ok) throw new Error("元データを読み込めません: "+res.status);
+    const data = await res.json();
+    if (!Array.isArray(data.characters) || data.characters.filter(x=>x.side==="ally").length!==40 ||
+        data.characters.filter(x=>x.side==="enemy").length!==69 || !Array.isArray(data.stages) || data.stages.length!==109)
+      throw new Error("元データ（味方40・敵69・ステージ109）がそろっていません。");
+    return data;
+  })();
   try { return await legacyGameDataPromise; }
-  catch (error) { legacyGameDataPromise = null; console.error("Legacy game data load failed:", error); return null; }
+  catch(e) { legacyGameDataPromise=null; console.error("Legacy data load failed:",e); return null; }
 }
-
 async function loadLegacyCharacters(env, request) {
-  const data = await loadLegacyGameData(env, request);
-  return Array.isArray(data?.characters) ? data.characters : null;
+  const data=await loadLegacyGameData(env,request);
+  return Array.isArray(data?.characters)?data.characters:null;
 }
 
 function mergeCharacterRoster(legacyCharacters, savedCharacters) {
@@ -269,52 +256,51 @@ function mergeCharacterRoster(legacyCharacters, savedCharacters) {
       (!saved.image || saved.image === stub.image);
     if (unchangedPlaceholder) continue;
 
-    const image = typeof sasync function loadConfig(env, request) {
-  const legacyData = await loadLegacyGameData(env, request);
-  const legacyCharacters = Array.isArray(legacyData?.characters) ? legacyData.characters : null;
-  const baseConfig = {
-    ...structuredClone(DEFAULT_CONFIG),
-    characters: legacyCharacters || DEFAULT_CONFIG.characters,
-    stages: Array.isArray(legacyData?.stages) && legacyData.stages.length ? legacyData.stages : DEFAULT_CONFIG.stages
-  };
-  const row = await getDb(env).prepare("SELECT value_json FROM game_config WHERE config_key = 'main'").first();
-  if (!row?.value_json) return baseConfig;
-  try {
-    const saved = JSON.parse(row.value_json);
-    return {
-      ...baseConfig,
-      ...saved,
-      economy: { ...DEFAULT_CONFIG.economy, ...(saved.economy || {}) },
-      gachaRates: { ...DEFAULT_CONFIG.gachaRates, ...(saved.gachaRates || {}) },
-      characters: mergeCharacterRoster(legacyCharacters, saved.characters),
-      stages: mergeLegacyStages(baseConfig.stages, saved.stages)
-    };
-  } catch { return baseConfig; }
+    const image = typeof saved.image === "string" &&
+      saved.image.startsWith("data:image/") ? saved.image :
+      (saved.image && !genericImages.has(saved.image) ? saved.image : original.image);
+
+    merged.set(saved.id, {
+      ...original, ...saved, image,
+      encyclopediaImage: original.encyclopediaImage,
+      forms: Array.isArray(saved.forms) && saved.forms.length
+        ? saved.forms.map((form, index) => ({
+            ...(original.forms?.[index] || {}), ...form,
+            image: form.image?.startsWith("data:image/") ? form.image : original.forms?.[index]?.image
+          }))
+        : original.forms
+    });
+  }
+  return [...merged.values()];
 }
 
-function mergeLegacyStages(legacyStages, savedStages) {
-  const map = new Map((Array.isArray(legacyStages) ? legacyStages : []).map(stage => [stage.id, stage]));
-  for (const saved of (Array.isArray(savedStages) ? savedStages : [])) {
-    if (!saved || typeof saved.id !== "string" || saved.id === "stage-1") continue;
-    const original = map.get(saved.id);
-    map.set(saved.id, original ? {
-      ...original, ...saved,
-      titleImage: saved.titleImage?.startsWith("data:image/") ? saved.titleImage : original.titleImage,
-      enemyWaves: Array.isArray(saved.enemyWaves) ? saved.enemyWaves : original.enemyWaves
-    } : saved);
+async function loadConfig(env, request) {
+  const legacyData=await loadLegacyGameData(env,request);
+  const legacyCharacters=Array.isArray(legacyData?.characters)?legacyData.characters:null;
+  const baseConfig={...structuredClone(DEFAULT_CONFIG),
+    characters:legacyCharacters||DEFAULT_CONFIG.characters,
+    stages:Array.isArray(legacyData?.stages)&&legacyData.stages.length?legacyData.stages:DEFAULT_CONFIG.stages};
+  const row=await getDb(env).prepare("SELECT value_json FROM game_config WHERE config_key = 'main'").first();
+  if(!row?.value_json)return baseConfig;
+  try {
+    const saved=JSON.parse(row.value_json);
+    return {...baseConfig,...saved,
+      economy:{...DEFAULT_CONFIG.economy,...(saved.economy||{})},
+      gachaRates:{...DEFAULT_CONFIG.gachaRates,...(saved.gachaRates||{})},
+      characters:mergeCharacterRoster(legacyCharacters,saved.characters),
+      stages:mergeLegacyStages(baseConfig.stages,saved.stages)};
+  } catch { return baseConfig; }
+}
+function mergeLegacyStages(legacyStages,savedStages) {
+  const map=new Map((Array.isArray(legacyStages)?legacyStages:[]).map(x=>[x.id,x]));
+  for(const saved of (Array.isArray(savedStages)?savedStages:[])) {
+    if(!saved||typeof saved.id!=="string"||saved.id==="stage-1")continue;
+    const original=map.get(saved.id);
+    map.set(saved.id,original?{...original,...saved,
+      titleImage:saved.titleImage?.startsWith("data:image/")?saved.titleImage:original.titleImage,
+      enemyWaves:Array.isArray(saved.enemyWaves)?saved.enemyWaves:original.enemyWaves}:saved);
   }
   return [...map.values()];
-}
-G.gachaRates,
-        ...(saved.gachaRates || {})
-      },
-      characters: mergeCharacterRoster(legacyCharacters, saved.characters),
-      stages: Array.isArray(saved.stages)
-        ? saved.stages : DEFAULT_CONFIG.stages
-    };
-  } catch {
-    return baseConfig;
-  }
 }
 
 async function createSession(env, userId, role, username) {
@@ -697,21 +683,17 @@ async function handleApi(request, env) {
       }, 400);
     }
 
-    const configToSave = structuredClone(c);
-    for (const character of (configToSave.characters || [])) {
-      if (typeof character.image === "string" && character.image.startsWith("data:image/")) delete character.image;
+    const configToSave=structuredClone(c);
+    for(const character of (configToSave.characters||[])) {
+      if(typeof character.image==="string"&&character.image.startsWith("data:image/"))delete character.image;
       delete character.encyclopediaImage;
-      if (Array.isArray(character.forms)) character.forms = character.forms.map(form => {
-        const copy = { ...form };
-        if (typeof copy.image === "string" && copy.image.startsWith("data:image/")) delete copy.image;
-        return copy;
+      if(Array.isArray(character.forms))character.forms=character.forms.map(form=>{
+        const copy={...form};if(typeof copy.image==="string"&&copy.image.startsWith("data:image/"))delete copy.image;return copy;
       });
     }
-    for (const stage of (configToSave.stages || [])) {
-      if (typeof stage.titleImage === "string" && stage.titleImage.startsWith("data:image/")) delete stage.titleImage;
-    }
-    const encoded = JSON.stringify(configToSave);
-    if (encoded.length > 900000) return json({ error: "設定データが大きすぎます。" }, 413);
+    for(const stage of (configToSave.stages||[]))if(typeof stage.titleImage==="string"&&stage.titleImage.startsWith("data:image/"))delete stage.titleImage;
+    const encoded=JSON.stringify(configToSave);
+    if(encoded.length>900000)return json({error:"設定データが大きすぎます。"},413);
 
     await getDb(env).prepare(
       `INSERT INTO game_config
@@ -955,15 +937,15 @@ export default {
       }
     }
 
-    // API以外はGitHubの静的ファイルを返す。ゲーム本体に追加ロジックを読み込む。
-    const assetResponse = await env.ASSETS.fetch(request);
-    if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html") && assetResponse.ok) {
-      const html = await assetResponse.text();
-      const injected = '<script src="/gameplay.js?v=restore-20261120"></script>';
-      const output = html.includes("</body>") ? html.replace("</body>", injected + "</body>") : html + injected;
-      const headers = new Headers(assetResponse.headers);
-      headers.delete("content-length"); headers.delete("content-encoding"); headers.delete("etag");
-      return new Response(output, { status: assetResponse.status, headers });
+    // API以外はGitHubの静的ファイルを返し、ゲーム本体に拡張ゲーム処理を読み込む。
+    const assetResponse=await env.ASSETS.fetch(request);
+    if(request.method==="GET"&&(url.pathname==="/"||url.pathname==="/index.html")&&assetResponse.ok) {
+      const html=await assetResponse.text();
+      const tag='<script src="/gameplay.js?v=restore-20261120"></script>';
+      const output=html.includes("</body>")?html.replace("</body>",tag+"</body>"):html+tag;
+      const headers=new Headers(assetResponse.headers);
+      headers.delete("content-length");headers.delete("content-encoding");headers.delete("etag");
+      return new Response(output,{status:assetResponse.status,headers});
     }
     return assetResponse;
   }
