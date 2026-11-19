@@ -1,0 +1,6 @@
+_worker.js
+wrangler.jsonc
+.assetsignore
+*.sql
+_worker.js.txt
+wrangler.jsonc.txt
