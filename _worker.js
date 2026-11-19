@@ -414,10 +414,23 @@ async function handleApi(request, env) {
   if (method === "GET" && path === "/api/health") {
     try {
       await getDb(env).prepare("SELECT 1 AS ok").first();
+      const legacyCharacters = await loadLegacyCharacters(env, request);
+      const allies = Array.isArray(legacyCharacters)
+        ? legacyCharacters.filter(character => character.side === "ally").length
+        : 0;
+      const enemies = Array.isArray(legacyCharacters)
+        ? legacyCharacters.filter(character => character.side === "enemy").length
+        : 0;
       return json({
         ok: true,
         service: "CAT大戦争 API",
-        database: "connected"
+        database: "connected",
+        legacyCharacters: {
+          total: allies + enemies,
+          allies,
+          enemies,
+          loaded: allies === 40 && enemies === 69
+        }
       });
     } catch (e) {
       return json({ ok: false, error: e.message }, 500);
