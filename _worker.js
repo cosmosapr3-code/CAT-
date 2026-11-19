@@ -549,7 +549,7 @@ async function handleApi(request, env) {
 
     const id = crypto.randomUUID();
     const hashed = await passwordHash(password);
-    const config = await loadConfig(env);
+    const config = await loadConfig(env, request);
     const profile = starterProfile(config);
     const now = nowSeconds();
 
@@ -611,7 +611,7 @@ async function handleApi(request, env) {
       "SELECT profile_json FROM profiles WHERE user_id = ?"
     ).bind(s.user_id).first();
 
-    const config = await loadConfig(env);
+    const config = await loadConfig(env, request);
     let profile;
 
     try {
@@ -667,7 +667,7 @@ async function handleApi(request, env) {
 
   // ゲーム設定取得
   if (path === "/api/config" && method === "GET") {
-    return json({ config: await loadConfig(env) });
+    return json({ config: await loadConfig(env, request) });
   }
 
   // 運営によるステージ・キャラ・ガチャ設定の保存
@@ -748,7 +748,7 @@ async function handleApi(request, env) {
       }, 400);
     }
 
-    const config = await loadConfig(env);
+    const config = await loadConfig(env, request);
     const cost = Number(
       count === 10
         ? config.economy.gachaTenCost
