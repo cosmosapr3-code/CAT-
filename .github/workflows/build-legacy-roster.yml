@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/build-legacy-roster.yml'
       - 'tools/restore_legacy_characters.py'
       - 'CAT大戦争_完全版_1ファイル軽量版.html'
   workflow_dispatch:
@@ -31,12 +32,12 @@ jobs:
 
       - name: Commit restored roster for Cloudflare deployment
         run: |
-          if git diff --quiet -- legacy-roster.json; then
+          git add legacy-roster.json
+          if git diff --cached --quiet; then
             echo "Roster unchanged"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add legacy-roster.json
           git commit -m "Restore original ally and enemy character roster"
           git push
