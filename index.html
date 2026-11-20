@@ -57,7 +57,8 @@
   const form=$('cat-auth-form'),username=$('cat-auth-username'),password=$('cat-auth-password');
   const submit=$('cat-auth-submit'),toggle=$('cat-auth-toggle'),error=$('cat-auth-error');
   const playerMode=$('cat-player-mode'),adminMode=$('cat-admin-mode');
-  let mode='player',registering=false,started=false,auth=null;
+  let mode='player',registering=false,started=false,auth=null,bootTimer=null,bootPoll=null;
+
   function labels(){
     submit.textContent=registering?'アカウントを作成':(mode==='admin'?'運営ログイン':'ログイン');
     toggle.textContent=registering?'ログイン画面に戻る':'初めての方はこちら（新規登録）';
@@ -76,6 +77,11 @@
     if(!res.ok)throw new Error(data.error||'通信に失敗しました。');
     return data;
   }
+  function bootError(message){
+    clearInterval(bootPoll);clearTimeout(bootTimer);
+    loading.style.display='none';frame.style.display='none';
+    gate.hidden=false;error.textContent=message;
+  }
   function passAuthToGame(){
     try{
       const w=frame.contentWindow;
@@ -84,15 +90,67 @@
       w.dispatchEvent(new w.CustomEvent('CAT_AUTH_READY',{detail:auth}));
     }catch(e){console.warn('CAT AUTH bridge:',e);}
   }
+  function finishGameBoot(w,d){
+    if(w.__CAT_EXTERNAL_STARTED)return true;
+    try{
+      const launch=d.getElementById('launch');
+      if(launch)launch.hidden=true;
+      const load=d.getElementById('loading');
+      if(load)load.hidden=true;
+      passAuthToGame();
+      w.scaffolding.start();
+      w.__CAT_EXTERNAL_STARTED=true;
+      frame.style.display='block';
+      loading.style.display='none';
+      gate.hidden=true;
+      clearInterval(bootPoll);clearTimeout(bootTimer);
+      return true;
+    }catch(e){
+      bootError('ゲームの起動に失敗しました: '+(e&&e.message||e));
+      return false;
+    }
+  }
+  function monitorGameBoot(){
+    clearInterval(bootPoll);clearTimeout(bootTimer);
+    bootPoll=setInterval(()=>{
+      try{
+        const w=frame.contentWindow,d=w.document;
+        if(!d||!d.head)return;
+        if(!d.getElementById('cat-hide-scratch-controls')){
+          const st=d.createElement('style');
+          st.id='cat-hide-scratch-controls';
+          st.textContent='#loading,#launch,.control-button,.green-flag-button,.pause-button,.stop-all-button,.fullscreen-button{display:none!important;visibility:hidden!important;pointer-events:none!important}';
+          d.head.appendChild(st);
+        }
+        const load=d.getElementById('loading');
+        const scratchError=d.getElementById('error');
+        if(scratchError&&!scratchError.hidden){
+          const msg=d.getElementById('error-message')?.textContent||'元ゲームの読み込みに失敗しました。';
+          bootError(msg);return;
+        }
+        if(w.scaffolding&&load&&load.hidden)finishGameBoot(w,d);
+      }catch(e){
+        bootError('ゲーム画面に接続できませんでした: '+(e&&e.message||e));
+      }
+    },150);
+    bootTimer=setTimeout(()=>bootError('ゲームの読み込みが完了しませんでした。ページを再読み込みしてください。'),90000);
+  }
   frame.addEventListener('load',()=>{
-    if(auth){passAuthToGame();loading.style.display='none';frame.style.display='block';}
+    if(!auth)return;
+    monitorGameBoot();
   });
   function enterGame(session){
     auth={role:session.role==='admin'?'admin':'player',username:String(session.username||'')};
     window.CAT_AUTH=auth;
-    gate.hidden=true;loading.style.display='flex';
-    if(!started){started=true;frame.src='/CAT大戦争_完全版_1ファイル軽量版.html';}
-    else{passAuthToGame();loading.style.display='none';frame.style.display='block';}
+    gate.hidden=true;
+    loading.textContent='CAT大戦争を起動中…';
+    loading.style.display='flex';
+    if(!started){
+      started=true;
+      frame.src='/CAT大戦争_完全版_1ファイル軽量版.html';
+    }else{
+      monitorGameBoot();
+    }
     window.dispatchEvent(new CustomEvent('CAT_AUTH_READY',{detail:auth}));
   }
   playerMode.addEventListener('click',()=>setMode('player'));
