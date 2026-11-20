@@ -944,7 +944,7 @@ export default {
     const assetResponse=await env.ASSETS.fetch(request);
     if(request.method==="GET"&&(url.pathname==="/"||url.pathname==="/index.html")&&assetResponse.ok) {
       const html=await assetResponse.text();
-      const tag='<script src="/gameplay.js?v=restore-20261120"></script>';
+      const tag='<script src="/gameplay.js?v=combat-20261120-v2"></script>';
       const output=html.includes("</body>")?html.replace("</body>",tag+"</body>"):html+tag;
       const headers=new Headers(assetResponse.headers);
       headers.delete("content-length");headers.delete("content-encoding");headers.delete("etag");
