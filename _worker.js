@@ -384,7 +384,7 @@ function checkSameOrigin(request) {
 }
 
 const CARD_CATALOG = [{
-  id: "card-cat-kanzen", name: "CAT完全体", image: "/assets/cards/cat-kanzen.png", cost: 3,
+  id: "card-cat-kanzen", name: "CAT完全体", image: "/assets/cards/cat-kanzen.webp", cost: 3,
   description: "scratch属性のカードを2枚ずつ加え、コストを0にして効果を10倍にする。相手に10ダメージ、50%で自分に5ダメージ"
 }];
 const FIXED_TERRA_MISSION = {
