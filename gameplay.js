@@ -483,7 +483,11 @@
     if(!battle||battle.done)return;battle.done=true;cancelAnimationFrame(raf);
     const s=battle.stage,p=$('battleResult');p.classList.remove('hidden');
     p.innerHTML=win?`<h3>🎉 ステージクリア！</h3><p>経験値 +${money(s.rewardXp||0)} · CATチュール +${money(s.rewardChuru||0)}</p><button class="btn green" id="resultReturn">戻る</button>`:`<h3>もう少し！</h3><p>編成を見直して再挑戦しよう。</p><button class="btn" id="resultReturn">戻る</button>`;
-    if(win&&role==='player'){profile.xp+=Number(s.rewardXp||0);profile.catChuru+=Number(s.rewardChuru||0);persistProfile();}
+    if(win&&role==='player'){
+      profile.xp+=Number(s.rewardXp||0);profile.catChuru+=Number(s.rewardChuru||0);persistProfile();
+      const report=window.CAT_REPORT_STAGE_WIN||(window.parent!==window?window.parent.CAT_REPORT_STAGE_WIN:null);
+      if(typeof report==='function')Promise.resolve(report(s.id)).catch(err=>console.warn('Mission reward sync failed:',err));
+    }
     refreshProfile();$('resultReturn').onclick=()=>{if($('bgm'))$('bgm').pause();showPage('stages');};
   };
 
