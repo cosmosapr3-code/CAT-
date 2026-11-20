@@ -950,15 +950,19 @@ export default {
       }
     }
 
-    // API以外はGitHubの静的ファイルを返し、ゲーム本体に拡張ゲーム処理を読み込む。
+    // API以外は静的ファイルを返す。旧プロトタイプだけ追加ゲーム処理を読み込む。
     const assetResponse=await env.ASSETS.fetch(request);
     if(request.method==="GET"&&(url.pathname==="/"||url.pathname==="/index.html")&&assetResponse.ok) {
-      const html=await assetResponse.text();
-      const tag='<script src="/gameplay.js?v=combat-20261120-v2"></script>';
-      const output=html.includes("</body>")?html.replace("</body>",tag+"</body>"):html+tag;
-      const headers=new Headers(assetResponse.headers);
-      headers.delete("content-length");headers.delete("content-encoding");headers.delete("etag");
-      return new Response(output,{status:assetResponse.status,headers});
+      const html=await assetResponse.clone().text();
+      // 元Scratch版（ログインゲート付き）はゲーム本体がHTML内で起動するため、
+      // 旧プロトタイプ用 gameplay.js を重ねて読み込まない。
+      if(!html.includes('id="cat-auth-gate"')) {
+        const tag='<script src="/gameplay.js?v=combat-20261120-v2"></script>';
+        const output=html.includes("</body>")?html.replace("</body>",tag+"</body>"):html+tag;
+        const headers=new Headers(assetResponse.headers);
+        headers.delete("content-length");headers.delete("content-encoding");headers.delete("etag");
+        return new Response(output,{status:assetResponse.status,headers});
+      }
     }
     return assetResponse;
   }
