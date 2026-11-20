@@ -6,7 +6,6 @@ on:
     paths:
       - 'CAT大戦争_完全版_1ファイル軽量版.html'
       - 'tools/optimize_cat_game_legacy.mjs'
-      - '.github/workflows/optimize-cat-game.yml'
   workflow_dispatch:
 
 permissions:
@@ -27,11 +26,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install image and ZIP tools
-        run: npm install --no-save jszip sharp
+      - name: Install ZIP and SVG optimization tools
+        run: npm install --no-save jszip svgo
 
       - name: Optimize the embedded game assets
-        run: node tools/optimize_cat_game_legacy.mjs 'CAT大戦争_完全版_1ファイル軽量版.html' 200
+        run: node tools/optimize_cat_game_legacy.mjs 'CAT大戦争_完全版_1ファイル軽量版.html' 2000
 
       - name: Commit optimized game and cache-busted entry page
         id: commit
