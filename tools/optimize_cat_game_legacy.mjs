@@ -55,22 +55,20 @@ function safeOptimizeSvg(buffer) {
   const source = buffer.toString("utf8");
   const result = optimizeSvg(source, {
     multipass: true,
-    // 画像の形・寸法・ID・viewBoxを保持し、不要なXML記述だけを整理する。
-    plugins: [
-      "removeDoctype",
-      "removeXMLProcInst",
-      "removeComments",
-      "removeMetadata",
-      "cleanupAttrs",
-      "convertStyleToAttrs",
-      "removeEmptyAttrs",
-      "cleanupNumericValues",
-      "convertColors"
-    ]
+    // 寸法・ID・viewBox・タイトルを保持し、ベクター形状を高精度で最適化する。
+    plugins: [{
+      name:"preset-default",
+      params:{overrides:{
+        cleanupIds:false,
+        removeViewBox:false,
+        removeTitle:false,
+        removeDesc:false,
+        convertPathData:{floatPrecision:4}
+      }}
+    }]
   });
   return Buffer.from(result.data, "utf8");
 }
-
 async function optimizeZip(buffer, maxSvg) {
   const sourceZip = await JSZip.loadAsync(buffer);
   const projectFile = sourceZip.file("project.json");
@@ -133,30 +131,29 @@ async function optimizeZip(buffer, maxSvg) {
     outputZip.file(replacement.name, replacement.data, {
       binary:true,
       compression:"DEFLATE",
-      compressionOptions:{level:6}
+      compressionOptions:{level:9}
     });
   }
   for (const name of Object.keys(sourceZip.files)) {
     const file = sourceZip.files[name];
     if (file.dir || name === "project.json" || replacements.has(name)) continue;
     const data = await file.async("nodebuffer");
-    const extension = name.split(".").pop().toLowerCase();
-    const alreadyCompressed = ["mp3","png","jpg","jpeg","gif","webp"].includes(extension);
     outputZip.file(name, data, {
       binary:true,
-      compression:alreadyCompressed ? "STORE" : "DEFLATE",
-      compressionOptions:{level:6}
+      // 元アーカイブと同じDEFLATE方式を保ち、圧縮レベルだけ上げる。
+      compression:"DEFLATE",
+      compressionOptions:{level:9}
     });
   }
   outputZip.file("project.json", JSON.stringify(project), {
     compression:"DEFLATE",
-    compressionOptions:{level:6}
+    compressionOptions:{level:9}
   });
 
   const output = await outputZip.generateAsync({
     type:"nodebuffer",
     compression:"DEFLATE",
-    compressionOptions:{level:6},
+    compressionOptions:{level:9},
     streamFiles:true
   });
 
