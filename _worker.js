@@ -199,6 +199,7 @@ function validateProfile(p) {
     owned, team, levels, forms, enemyBook: ids(p.enemyBook, 200),
     completedMissions: ids(p.completedMissions, 1000),
     ownedCards: ids(p.ownedCards, 1000),
+    ownedExternalRewards: ids(p.ownedExternalRewards, 1000),
     unlockedStages: ids(p.unlockedStages, 500)
   };
 }
@@ -216,6 +217,7 @@ function starterProfile(config) {
     enemyBook: [],
     completedMissions: [],
     ownedCards: [],
+    ownedExternalRewards: [],
     unlockedStages: []
   };
 }
@@ -383,14 +385,18 @@ function checkSameOrigin(request) {
   }
 }
 
-const CARD_CATALOG = [{
-  id: "card-cat-kanzen", name: "CAT完全体", image: "/assets/cards/cat-kanzen.webp", cost: 3,
-  description: "scratch属性のカードを2枚ずつ加え、コストを0にして効果を10倍にする。相手に10ダメージ、50%で自分に5ダメージ"
+// 独立した別ゲーム用のカード報酬。CAT大戦争の編成・戦闘・ガチャとは無関係。
+const EXTERNAL_REWARD_CATALOG = [{
+  id: "external-reward-cat-kanzen",
+  name: "CAT完全体",
+  image: "/assets/cards/cat-kanzen.webp",
+  description: "別ゲーム用カード報酬。CAT大戦争の戦闘では使用しません。",
+  originalEffect: "scratch属性のカードを2枚ずつ加え、コストを0にして効果を10倍にする。相手に10ダメージ、50%で自分に5ダメージ"
 }];
 const FIXED_TERRA_MISSION = {
   id: "fixed-win-terra-card", title: "TERRA CARDに勝利",
   description: "ステージ「TERRA CARD」をクリアする", type: "stage_win", stageName: "TERRA CARD", fixed: true,
-  rewards: { xp: 0, catChuru: 0, characterIds: [], cardIds: ["card-cat-kanzen"], stageIds: [] }
+  rewards: { xp: 0, catChuru: 0, characterIds: [], externalRewardIds: ["external-reward-cat-kanzen"], stageIds: [] }
 };
 function boundedInt(value, max = 1000000000) { return Math.max(0, Math.min(max, Math.floor(Number(value) || 0))); }
 function safeStringIds(value, limit = 500) { return [...new Set((Array.isArray(value) ? value : []).filter(x => typeof x === "string" && x.length > 0 && x.length <= 120))].slice(0, limit); }
@@ -406,11 +412,11 @@ function normalizeMission(input, config) {
   const rewards = input.rewards && typeof input.rewards === "object" ? input.rewards : {};
   const characters = new Set((config.characters || []).filter(c => c.side === "ally").map(c => c.id));
   const stages = new Set((config.stages || []).map(stage => stage.id));
-  const cards = new Set(CARD_CATALOG.map(card => card.id));
+  const externalRewards = new Set(EXTERNAL_REWARD_CATALOG.map(reward => reward.id));
   return { id, title, description: String(input.description || "").slice(0, 240), type: "stage_win", stageId, stageName, fixed: false,
     rewards: { xp: boundedInt(rewards.xp), catChuru: boundedInt(rewards.catChuru),
       characterIds: safeStringIds(rewards.characterIds, 100).filter(x => characters.has(x)),
-      cardIds: safeStringIds(rewards.cardIds, 100).filter(x => cards.has(x)),
+      externalRewardIds: safeStringIds(rewards.externalRewardIds, 100).filter(x => externalRewards.has(x)),
       stageIds: safeStringIds(rewards.stageIds, 300).filter(x => stages.has(x)) } };
 }
 async function loadMissions(env, request) {
@@ -806,13 +812,13 @@ async function handleApi(request, env) {
   if (path === "/api/missions" && method === "GET") {
     const missions = await loadMissions(env, request);
     const session = await getSession(request, env);
-    let progress = { completedMissions: [], ownedCards: [] };
+    let progress = { completedMissions: [], ownedExternalRewards: [] };
     if (session?.role === "player") {
       const config = await loadConfig(env, request);
       const data = await readProfileForUser(getDb(env), session.user_id, config);
-      progress = { completedMissions: data.profile.completedMissions, ownedCards: data.profile.ownedCards, unlockedStages: data.profile.unlockedStages, unlockedStageCodes: data.profile.unlockedStages.map(id => config.stages.find(stage => stage.id === id)?.legacyCode).filter(Boolean) };
+      progress = { completedMissions: data.profile.completedMissions, ownedExternalRewards: data.profile.ownedExternalRewards, unlockedStages: data.profile.unlockedStages, unlockedStageCodes: data.profile.unlockedStages.map(id => config.stages.find(stage => stage.id === id)?.legacyCode).filter(Boolean) };
     }
-    return json({ missions, cards: CARD_CATALOG, progress });
+    return json({ missions, externalRewards: EXTERNAL_REWARD_CATALOG, progress });
   }
   // Small operator catalog: only names and IDs, never heavy character image data.
   if (path === "/api/admin/catalog" && method === "GET") {
@@ -827,7 +833,7 @@ async function handleApi(request, env) {
   // Admin mission editor; the fixed TERRA CARD mission is always retained.
   if (path === "/api/admin/missions" && method === "GET") {
     const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
-    return json({ missions: await loadMissions(env, request), cards: CARD_CATALOG });
+    return json({ missions: await loadMissions(env, request), externalRewards: EXTERNAL_REWARD_CATALOG });
   }
   if (path === "/api/admin/missions" && method === "PUT") {
     const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
@@ -871,12 +877,12 @@ async function handleApi(request, env) {
         if (!data.profile.owned.includes(id)) data.profile.owned.push(id);
         data.profile.levels[id] = Math.max(1, Number(data.profile.levels[id] || 1));
       }
-      for (const id of safeStringIds(reward.cardIds, 100)) if (CARD_CATALOG.some(c => c.id === id) && !data.profile.ownedCards.includes(id)) data.profile.ownedCards.push(id);
+      for (const id of safeStringIds(reward.externalRewardIds, 100)) if (EXTERNAL_REWARD_CATALOG.some(item => item.id === id) && !data.profile.ownedExternalRewards.includes(id)) data.profile.ownedExternalRewards.push(id);
       for (const id of safeStringIds(reward.stageIds, 300)) if ((config.stages || []).some(x => x.id === id) && !data.profile.unlockedStages.includes(id)) data.profile.unlockedStages.push(id);
       data.profile.completedMissions.push(mission.id); completed.push(mission);
     }
     await saveProfileForUser(db, auth.session.user_id, data.profile, data.row?.profile_json ?? null);
-    return json({ ok: true, completed, profile: data.profile, cards: CARD_CATALOG });
+    return json({ ok: true, completed, profile: data.profile, externalRewards: EXTERNAL_REWARD_CATALOG });
   }
   // Admin grants currencies, characters, collectible cards and stage unlock flags.
   if (path === "/api/admin/grants" && method === "POST") {
@@ -889,14 +895,14 @@ async function handleApi(request, env) {
     const data = await readProfileForUser(db, body.playerId, config);
     const xp = boundedInt(body.xp), catChuru = boundedInt(body.catChuru);
     const characterIds = safeStringIds(body.characterIds, 100).filter(id => (config.characters || []).some(c => c.id === id && c.side === "ally"));
-    const cardIds = safeStringIds(body.cardIds, 100).filter(id => CARD_CATALOG.some(c => c.id === id));
+    const externalRewardIds = safeStringIds(body.externalRewardIds, 100).filter(id => EXTERNAL_REWARD_CATALOG.some(item => item.id === id));
     const stageIds = safeStringIds(body.stageIds, 300).filter(id => (config.stages || []).some(stage => stage.id === id));
     data.profile.xp = boundedInt(data.profile.xp + xp); data.profile.catChuru = boundedInt(data.profile.catChuru + catChuru);
     for (const id of characterIds) { if (!data.profile.owned.includes(id)) data.profile.owned.push(id); data.profile.levels[id] = Math.max(1, Number(data.profile.levels[id] || 1)); }
-    for (const id of cardIds) if (!data.profile.ownedCards.includes(id)) data.profile.ownedCards.push(id);
+    for (const id of externalRewardIds) if (!data.profile.ownedExternalRewards.includes(id)) data.profile.ownedExternalRewards.push(id);
     for (const id of stageIds) if (!data.profile.unlockedStages.includes(id)) data.profile.unlockedStages.push(id);
     await saveProfileForUser(db, body.playerId, data.profile, data.row?.profile_json ?? null);
-    return json({ ok: true, playerId: body.playerId, added: { xp, catChuru, characterIds, cardIds, stageIds }, profile: data.profile });
+    return json({ ok: true, playerId: body.playerId, added: { xp, catChuru, characterIds, externalRewardIds, stageIds }, profile: data.profile });
   }
 
   // ガチャ
@@ -1052,7 +1058,7 @@ async function handleApi(request, env) {
         catChuru: Number(p.catChuru || 0),
         xp: Number(p.xp || 0),
         ownedCount: Array.isArray(p.owned) ? p.owned.length : 0,
-        cardCount: Array.isArray(p.ownedCards) ? p.ownedCards.length : 0,
+        externalRewardCount: Array.isArray(p.ownedExternalRewards) ? p.ownedExternalRewards.length : 0,
         unlockedStageCount: Array.isArray(p.unlockedStages) ? p.unlockedStages.length : 0
       };
     });
