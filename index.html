@@ -134,7 +134,7 @@
         bootError('ゲーム画面に接続できませんでした: '+(e&&e.message||e));
       }
     },150);
-    bootTimer=setTimeout(()=>bootError('ゲームの読み込みが完了しませんでした。ページを再読み込みしてください。'),90000);
+    bootTimer=setTimeout(()=>bootError('ゲームの読み込みが完了しませんでした。ページを再読み込みしてください。'),180000);
   }
   frame.addEventListener('load',()=>{
     if(!auth)return;
@@ -148,7 +148,7 @@
     loading.style.display='flex';
     if(!started){
       started=true;
-      frame.src='/CAT大戦争_完全版_1ファイル軽量版.html';
+      frame.src=new URL('CAT大戦争_完全版_1ファイル軽量版.html',window.location.href).href;
     }else{
       monitorGameBoot();
     }
