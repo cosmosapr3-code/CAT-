@@ -27,6 +27,25 @@
 #cat-auth-error{min-height:20px;margin:12px 0 0;color:#ff9d8e;font-size:12px;line-height:1.45;overflow-wrap:anywhere}
 #cat-auth-foot{margin:10px 0 0;color:#958d7e;font-size:11px}
 #cat-game-loading{display:none;position:fixed;inset:0;align-items:center;justify-content:center;color:#ffe09a;background:#050505;font-weight:800}
+#cat-tools-launcher{position:fixed;right:14px;bottom:14px;z-index:2147482000;border:2px solid #e8c06d;border-radius:999px;padding:12px 17px;background:linear-gradient(#f7dc9f,#bf8730);color:#271a08;font-weight:900;box-shadow:0 5px 18px #0009;cursor:pointer}
+#cat-tools-launcher[hidden],#cat-tools-panel[hidden]{display:none!important}
+#cat-tools-panel{position:fixed;z-index:2147482500;inset:3vh 3vw;max-width:1000px;margin:auto;overflow:auto;border:2px solid #c99b42;border-radius:18px;background:#171717;color:#fff;padding:18px;box-shadow:0 20px 70px #000e}
+#cat-tools-head{display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:-18px;background:#171717;padding:4px 0 12px;z-index:2;border-bottom:1px solid #594b32}
+#cat-tools-head h2{margin:0;color:#ffe09a;font-size:22px}
+#cat-tools-close,.cat-tools-action{border:1px solid #a7803b;border-radius:9px;padding:9px 13px;background:#8f672c;color:white;font-weight:800;cursor:pointer}
+.cat-tools-section{margin:15px 0;padding:14px;border:1px solid #50432e;border-radius:12px;background:#222}
+.cat-tools-section h3{margin:0 0 12px;color:#ffdd9a}
+.cat-tools-field{display:grid;gap:5px;margin:9px 0;color:#ddd;font-size:13px;font-weight:700}
+.cat-tools-field input,.cat-tools-field select{width:100%;min-width:0;padding:9px;border:1px solid #726044;border-radius:8px;background:#0c0c0c;color:#fff;font:inherit}
+.cat-tools-field select[multiple]{min-height:110px}
+.cat-tools-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.cat-tools-note{font-size:12px;color:#c9bda8;line-height:1.5}
+.cat-tools-card{display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;border:1px solid #725c3b;border-radius:10px;padding:10px;margin:8px 0;background:#29241b}
+.cat-tools-card img{width:86px;height:112px;object-fit:contain;background:#eee;border-radius:6px}
+.cat-tools-mission{padding:11px;margin:8px 0;border-radius:10px;background:#292929;border:1px solid #555}
+.cat-tools-mission.done{border-color:#63a66b;background:#1e2b20}
+.cat-tools-error{color:#ff9d8e;white-space:pre-wrap;margin:8px 0;font-size:12px}
+@media(max-width:600px){#cat-tools-panel{inset:1vh 1vw;padding:12px}#cat-tools-head{top:-12px}#cat-tools-head h2{font-size:18px}}
 </style>
 </head>
 <body>
@@ -50,6 +69,28 @@
 </div>
 <div id="cat-game-loading">CAT大戦争を読み込み中…</div>
 <iframe id="cat-game" title="CAT大戦争" allow="fullscreen; autoplay; gamepad; clipboard-read; clipboard-write"></iframe>
+<button id="cat-tools-launcher" type="button" hidden>🎯 ミッション / 運営パネル</button>
+<div id="cat-tools-panel" hidden>
+  <div id="cat-tools-head"><h2 id="cat-tools-title">ミッション</h2><button id="cat-tools-close" type="button">閉じる</button></div>
+  <div id="cat-tools-error" class="cat-tools-error" aria-live="polite"></div>
+  <section id="cat-player-missions" class="cat-tools-section"><h3>📜 ミッション</h3><div id="cat-mission-list"></div><h3 style="margin-top:18px">🎴 入手したカード</h3><div id="cat-owned-cards"></div></section>
+  <section id="cat-admin-tools" class="cat-tools-section" hidden>
+    <h3>🎁 プレイヤーへ報酬を配布</h3>
+    <label class="cat-tools-field">配布するプレイヤー<select id="cat-admin-player"></select></label>
+    <div class="cat-tools-row"><label class="cat-tools-field">追加する経験値<input id="cat-grant-xp" type="number" min="0" max="1000000000" value="0"></label><label class="cat-tools-field">追加するCATチュール<input id="cat-grant-churu" type="number" min="0" max="1000000000" value="0"></label></div>
+    <div class="cat-tools-row"><label class="cat-tools-field">配布キャラクター<select id="cat-grant-characters" multiple></select></label><label class="cat-tools-field">開放する既存ステージ<select id="cat-grant-stages" multiple></select></label><label class="cat-tools-field">配布カード<select id="cat-grant-cards" multiple></select></label></div>
+    <button id="cat-grant-submit" class="cat-tools-action" type="button">この内容を配布</button>
+    <p class="cat-tools-note">数値は現在の所持量に加算。キャラクター・カード・ステージ開放は未所持分だけ追加します。</p>
+    <h3 style="margin-top:22px">🛠️ ミッションを追加</h3>
+    <label class="cat-tools-field">ミッション名<input id="cat-mission-title-input" maxlength="80" placeholder="例：第2章をクリア"></label>
+    <label class="cat-tools-field">達成条件：勝利するステージ<select id="cat-mission-stage-input"></select></label>
+    <div class="cat-tools-row"><label class="cat-tools-field">報酬経験値<input id="cat-mission-xp-input" type="number" min="0" value="0"></label><label class="cat-tools-field">報酬CATチュール<input id="cat-mission-churu-input" type="number" min="0" value="0"></label></div>
+    <div class="cat-tools-row"><label class="cat-tools-field">報酬キャラクター<select id="cat-mission-characters-input" multiple></select></label><label class="cat-tools-field">報酬カード<select id="cat-mission-cards-input" multiple></select></label><label class="cat-tools-field">開放するステージ<select id="cat-mission-stages-input" multiple></select></label></div>
+    <button id="cat-mission-add" class="cat-tools-action" type="button">ミッションを追加して保存</button>
+    <div id="cat-admin-mission-list"></div>
+    <p class="cat-tools-note">固定ミッション「TERRA CARDに勝利」は常に残り、削除・上書きできません。</p>
+  </section>
+</div>
 <script>
 (() => {
   const $ = id => document.getElementById(id);
@@ -58,6 +99,23 @@
   const submit=$('cat-auth-submit'),toggle=$('cat-auth-toggle'),error=$('cat-auth-error');
   const playerMode=$('cat-player-mode'),adminMode=$('cat-admin-mode');
   let mode='player',registering=false,started=false,auth=null,bootTimer=null,bootPoll=null;
+
+  const toolsLauncher=$('cat-tools-launcher'),toolsPanel=$('cat-tools-panel'),toolsTitle=$('cat-tools-title'),toolsError=$('cat-tools-error');
+  const selectedValues=id=>[...$(id).selectedOptions].map(o=>o.value).filter(Boolean);
+  const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll(String.fromCharCode(34),'&quot;').replaceAll(String.fromCharCode(39),'&#39;');
+  let adminMissions=[],adminCatalog={characters:[],stages:[]},cardCatalog=[];
+  function optionsHtml(items,idKey,labelKey,withBlank=false){return (withBlank?'<option value="">選択してください</option>':'')+items.map(x=>'<option value="'+esc(x[idKey])+'">'+esc(x[labelKey])+'</option>').join('');}
+  async function reportStageWin(stageId){if(!auth||auth.role!=='player'||!stageId)return null;const result=await api('/api/missions/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stageId})});if(result.completed?.length){toolsError.textContent='ミッション達成！報酬を受け取りました。';if(!toolsPanel.hidden)await loadPlayerMissions();}return result;}
+  window.CAT_REPORT_STAGE_WIN=reportStageWin;
+  window.addEventListener('message',e=>{if(e.source!==frame.contentWindow)return;const d=e.data||{};if(d.type==='CAT_STAGE_WIN'&&d.stageId)reportStageWin(d.stageId).catch(err=>{toolsError.textContent=err.message;});});
+  async function loadPlayerMissions(){const data=await api('/api/missions');$('cat-mission-list').innerHTML=data.missions.map(m=>{const done=(data.progress.completedMissions||[]).includes(m.id);const r=m.rewards||{};return '<article class="cat-tools-mission '+(done?'done':'')+'"><b>'+(done?'✅ ':'')+esc(m.title)+'</b><p class="cat-tools-note">'+esc(m.description||'')+'</p><small>条件：'+esc(m.stageName||m.stageId||'ステージ勝利')+' / 報酬：XP '+Number(r.xp||0)+'・CATチュール '+Number(r.catChuru||0)+(m.fixed?'・カード CAT完全体':'')+'</small><div class="cat-tools-note">'+(done?'達成済み':'未達成')+'</div></article>';}).join('');const owned=(data.progress.ownedCards||[]).map(id=>data.cards.find(c=>c.id===id)).filter(Boolean);$('cat-owned-cards').innerHTML=owned.length?owned.map(c=>'<div class="cat-tools-card"><img src="'+esc(c.image)+'" alt="'+esc(c.name)+'"><div><b>'+esc(c.name)+'</b><p class="cat-tools-note">'+esc(c.description)+'</p></div></div>').join(''):'<p class="cat-tools-note">まだカードを持っていません。</p>';}
+  async function loadAdminPanel(){const [m,c,p]=await Promise.all([api('/api/admin/missions'),api('/api/admin/catalog'),api('/api/admin/players')]);adminMissions=m.missions;cardCatalog=m.cards;adminCatalog=c;$('cat-admin-player').innerHTML=optionsHtml(p.players,'id','username',true);const chars=c.characters||[],stages=c.stages||[];$('cat-grant-characters').innerHTML=optionsHtml(chars,'id','name');$('cat-mission-characters-input').innerHTML=optionsHtml(chars,'id','name');$('cat-grant-stages').innerHTML=optionsHtml(stages,'id','name');$('cat-mission-stages-input').innerHTML=optionsHtml(stages,'id','name');$('cat-mission-stage-input').innerHTML=optionsHtml(stages,'id','name');$('cat-grant-cards').innerHTML=optionsHtml(m.cards||[],'id','name');$('cat-mission-cards-input').innerHTML=optionsHtml(m.cards||[],'id','name');renderAdminMissionList();}
+  function renderAdminMissionList(){$('cat-admin-mission-list').innerHTML='<h3 style="margin-top:20px">登録中のミッション</h3>'+adminMissions.map(m=>'<article class="cat-tools-mission"><b>'+esc(m.title)+'</b><small class="cat-tools-note" style="display:block">'+esc(m.stageName||m.stageId||'')+' / '+(m.fixed?'固定ミッション':'運営追加')+'</small>'+(m.fixed?'':'<button type="button" class="cat-tools-action" data-delete-mission="'+esc(m.id)+'">削除</button>')+'</article>').join('');document.querySelectorAll('[data-delete-mission]').forEach(b=>b.onclick=async()=>{adminMissions=adminMissions.filter(m=>m.id!==b.dataset.deleteMission);await saveAdminMissions();});}
+  async function saveAdminMissions(){const result=await api('/api/admin/missions',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({missions:adminMissions})});adminMissions=result.missions;renderAdminMissionList();}
+  async function openToolsPanel(){toolsError.textContent='';toolsPanel.hidden=false;toolsTitle.textContent=auth?.role==='admin'?'運営パネル':'ミッション';$('cat-admin-tools').hidden=auth?.role!=='admin';$('cat-player-missions').hidden=auth?.role==='admin';try{if(auth?.role==='admin')await loadAdminPanel();else await loadPlayerMissions();}catch(e){toolsError.textContent='データの読み込みに失敗しました：'+(e.message||e);}}
+  toolsLauncher.addEventListener('click',openToolsPanel);$('cat-tools-close').addEventListener('click',()=>toolsPanel.hidden=true);
+  $('cat-grant-submit').addEventListener('click',async()=>{try{const playerId=$('cat-admin-player').value;if(!playerId)throw new Error('配布先を選択してください。');const result=await api('/api/admin/grants',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId,xp:Number($('cat-grant-xp').value||0),catChuru:Number($('cat-grant-churu').value||0),characterIds:selectedValues('cat-grant-characters'),stageIds:selectedValues('cat-grant-stages'),cardIds:selectedValues('cat-grant-cards')})});toolsError.textContent='配布しました。経験値 +'+result.added.xp+' / CATチュール +'+result.added.catChuru+' / キャラ '+result.added.characterIds.length+'体 / ステージ '+result.added.stageIds.length+'件';}catch(e){toolsError.textContent='配布に失敗しました：'+e.message;}});
+  $('cat-mission-add').addEventListener('click',async()=>{try{const stageId=$('cat-mission-stage-input').value,stage=adminCatalog.stages.find(x=>x.id===stageId),title=$('cat-mission-title-input').value.trim();if(!stage||!title)throw new Error('ミッション名と対象ステージを選んでください。');adminMissions.push({id:'mission-'+Date.now().toString(36),title,type:'stage_win',stageId,stageName:stage.name,description:'ステージ「'+stage.name+'」に勝利する',rewards:{xp:Number($('cat-mission-xp-input').value||0),catChuru:Number($('cat-mission-churu-input').value||0),characterIds:selectedValues('cat-mission-characters-input'),cardIds:selectedValues('cat-mission-cards-input'),stageIds:selectedValues('cat-mission-stages-input')}});await saveAdminMissions();$('cat-mission-title-input').value='';toolsError.textContent='ミッションを追加しました。';}catch(e){toolsError.textContent='ミッション保存に失敗しました：'+e.message;}});
 
   function labels(){
     submit.textContent=registering?'アカウントを作成':(mode==='admin'?'運営ログイン':'ログイン');
@@ -86,6 +144,7 @@
     try{
       const w=frame.contentWindow;
       w.CAT_AUTH=auth;
+      w.CAT_REPORT_STAGE_WIN=window.CAT_REPORT_STAGE_WIN;
       if(w.scaffolding&&auth.username)w.scaffolding.setUsername(auth.username);
       w.dispatchEvent(new w.CustomEvent('CAT_AUTH_READY',{detail:auth}));
     }catch(e){console.warn('CAT AUTH bridge:',e);}
@@ -152,6 +211,7 @@
     auth={role:session.role==='admin'?'admin':'player',username:String(session.username||'')};
     window.CAT_AUTH=auth;
     gate.hidden=true;
+    toolsLauncher.hidden=false;
     loading.textContent='CAT大戦争を起動中…';
     loading.style.display='flex';
     if(!started){
