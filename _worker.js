@@ -796,6 +796,16 @@ async function handleApi(request, env) {
     }
     return json({ missions, cards: CARD_CATALOG, progress });
   }
+  // Small operator catalog: only names and IDs, never heavy character image data.
+  if (path === "/api/admin/catalog" && method === "GET") {
+    const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
+    const config = await loadConfig(env, request);
+    return json({
+      characters: (config.characters || []).filter(c => c.side === "ally").map(c => ({ id: c.id, name: c.name })),
+      stages: (config.stages || []).map(stage => ({ id: stage.id, name: stage.name, series: stage.series || stage.chapter || "" }))
+    });
+  }
+
   // Admin mission editor; the fixed TERRA CARD mission is always retained.
   if (path === "/api/admin/missions" && method === "GET") {
     const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
