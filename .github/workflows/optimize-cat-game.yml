@@ -1,0 +1,57 @@
+name: Optimize CAT game assets
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'CAT大戦争_完全版_1ファイル軽量版.html'
+      - 'tools/optimize_cat_game_legacy.mjs'
+      - '.github/workflows/optimize-cat-game.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install image and ZIP tools
+        run: npm install --no-save jszip sharp
+
+      - name: Optimize the embedded game assets
+        run: node tools/optimize_cat_game_legacy.mjs 'CAT大戦争_完全版_1ファイル軽量版.html' 200
+
+      - name: Commit optimized game and cache-busted entry page
+        id: commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add 'CAT大戦争_完全版_1ファイル軽量版.html' index.html
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No optimization changes to commit."
+          else
+            git commit -m "Optimize CAT game assets [skip ci]"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Request GitHub Pages rebuild
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api --method POST "repos/${GITHUB_REPOSITORY}/pages/builds"
