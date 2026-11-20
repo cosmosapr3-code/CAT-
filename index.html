@@ -140,6 +140,14 @@
     if(!auth)return;
     monitorGameBoot();
   });
+  function preloadGame(){
+    if(started)return;
+    started=true;
+    frame.src=new URL('CAT大戦争_完全版_1ファイル軽量版.html',window.location.href).href;
+  }
+  username.addEventListener('focus',preloadGame,{once:true});
+  password.addEventListener('focus',preloadGame,{once:true});
+
   function enterGame(session){
     auth={role:session.role==='admin'?'admin':'player',username:String(session.username||'')};
     window.CAT_AUTH=auth;
@@ -147,8 +155,7 @@
     loading.textContent='CAT大戦争を起動中…';
     loading.style.display='flex';
     if(!started){
-      started=true;
-      frame.src=new URL('CAT大戦争_完全版_1ファイル軽量版.html',window.location.href).href;
+      preloadGame();
     }else{
       monitorGameBoot();
     }
