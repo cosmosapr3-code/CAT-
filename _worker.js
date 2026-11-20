@@ -435,6 +435,24 @@ async function saveProfileForUser(db, userId, profile, previousJson) {
   if (!result.meta?.changes) throw new Error("プロフィールが同時に更新されました。もう一度お試しください。");
 }
 
+let schemaInitialization = null;
+async function ensureSchema(env) {
+  const db = getDb(env);
+  if (schemaInitialization) return schemaInitialization;
+  schemaInitialization = (async () => {
+    await db.batch([
+      db.prepare(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL COLLATE NOCASE UNIQUE, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, created_at INTEGER NOT NULL)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, role TEXT NOT NULL, username TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS profiles (user_id TEXT PRIMARY KEY, profile_json TEXT NOT NULL, updated_at INTEGER NOT NULL)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS game_config (config_key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at INTEGER NOT NULL)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)`)
+    ]);
+  })();
+  try { await schemaInitialization; }
+  catch (error) { schemaInitialization = null; throw error; }
+}
+
 async function handleApi(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
@@ -1096,6 +1114,7 @@ export default {
 
     if (url.pathname.startsWith("/api/")) {
       try {
+        await ensureSchema(env);
         return await handleApi(request, env);
       } catch (error) {
         console.error("CAT大戦争 API error:", error);
