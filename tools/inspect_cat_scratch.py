@@ -81,4 +81,50 @@ for target in targets:
             })
 
 summary["broadcasts"] = sorted(broadcasts)
+
+def block_tree(blocks, root_id, seen=None, depth=0):
+    if seen is None:
+        seen = set()
+    if not root_id or root_id in seen or root_id not in blocks or depth > 40:
+        return []
+    seen.add(root_id)
+    block = blocks[root_id]
+    if not isinstance(block, dict):
+        return []
+    result = [(root_id, block)]
+    child_ids = []
+    for value in block.get("inputs", {}).values():
+        child_ids.extend(x for x in collect_literals(value) if x in blocks)
+    if block.get("next"):
+        child_ids.append(block["next"])
+    for child_id in child_ids:
+        result.extend(block_tree(blocks, child_id, seen, depth + 1))
+    return result
+
+summary["victory_scripts"] = []
+for target in targets:
+    if target.get("name") not in ("Stage", "味方攻撃", "勝ち負け判定", "セーブ", "ステージ集"):
+        continue
+    blocks = target.get("blocks", {})
+    for root_id, root in blocks.items():
+        if not isinstance(root, dict) or not root.get("topLevel"):
+            continue
+        nodes = block_tree(blocks, root_id)
+        hit_nodes = []
+        for block_id, block in nodes:
+            txt = collect_literals(block.get("fields", {})) + collect_literals(block.get("inputs", {}))
+            if any(re.search(r"勝ち判定|ステージクリア|負けた|CLEAR", value, re.I) for value in txt):
+                hit_nodes.append({
+                    "id": block_id, "opcode": block.get("opcode"),
+                    "fields": block.get("fields", {}),
+                    "inputs": block.get("inputs", {}),
+                    "mutation": block.get("mutation", {})
+                })
+        if hit_nodes:
+            summary["victory_scripts"].append({
+                "target": target.get("name"), "root": root_id,
+                "rootOpcode": root.get("opcode"),
+                "rootFields": root.get("fields", {}),
+                "nodes": hit_nodes[:40]
+            })
 print(json.dumps(summary, ensure_ascii=False, separators=(",", ":")))
