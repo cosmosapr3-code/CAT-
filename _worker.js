@@ -183,17 +183,26 @@ function getDb(env) {
 }
 
 function validateProfile(p) {
-  if(!p||typeof p!=="object"||Array.isArray(p))return null;
-  const owned=[...new Set((Array.isArray(p.owned)?p.owned:[]).filter(x=>typeof x==="string"))].slice(0,500);
-  const team=[...new Set((Array.isArray(p.team)?p.team:[]).filter(x=>typeof x==="string"&&owned.includes(x)))].slice(0,10);
-  const levelsIn=p.levels&&typeof p.levels==="object"&&!Array.isArray(p.levels)?p.levels:{};
-  const levels={};for(const [id,value] of Object.entries(levelsIn).slice(0,500))levels[id]=Math.max(1,Math.min(100,Math.floor(Number(value)||1)));
-  const formsIn=p.forms&&typeof p.forms==="object"&&!Array.isArray(p.forms)?p.forms:{};
-  const forms={};for(const [id,value] of Object.entries(formsIn).slice(0,100))forms[id]=Math.max(1,Math.min(3,Math.floor(Number(value)||1)));
-  const enemyBook=[...new Set((Array.isArray(p.enemyBook)?p.enemyBook:[]).filter(x=>typeof x==="string"))].slice(0,200);
-  return {catChuru:Math.max(0,Math.min(1000000000,Math.floor(Number(p.catChuru)||0))),
-    xp:Math.max(0,Math.min(1000000000,Math.floor(Number(p.xp)||0))),owned,team,levels,forms,enemyBook};
-}function starterProfile(config) {
+  if (!p || typeof p !== "object" || Array.isArray(p)) return null;
+  const ids = (value, limit = 500) => [...new Set((Array.isArray(value) ? value : []).filter(x => typeof x === "string" && x.length > 0 && x.length <= 120))].slice(0, limit);
+  const owned = ids(p.owned);
+  const team = ids(p.team, 10).filter(x => owned.includes(x));
+  const levelsIn = p.levels && typeof p.levels === "object" && !Array.isArray(p.levels) ? p.levels : {};
+  const levels = {};
+  for (const [id, value] of Object.entries(levelsIn).slice(0, 500)) levels[id] = Math.max(1, Math.min(100, Math.floor(Number(value) || 1)));
+  const formsIn = p.forms && typeof p.forms === "object" && !Array.isArray(p.forms) ? p.forms : {};
+  const forms = {};
+  for (const [id, value] of Object.entries(formsIn).slice(0, 100)) forms[id] = Math.max(1, Math.min(3, Math.floor(Number(value) || 1)));
+  return {
+    catChuru: Math.max(0, Math.min(1000000000, Math.floor(Number(p.catChuru) || 0))),
+    xp: Math.max(0, Math.min(1000000000, Math.floor(Number(p.xp) || 0))),
+    owned, team, levels, forms, enemyBook: ids(p.enemyBook, 200),
+    completedMissions: ids(p.completedMissions, 1000),
+    ownedCards: ids(p.ownedCards, 1000),
+    unlockedStages: ids(p.unlockedStages, 500)
+  };
+}
+function starterProfile(config) {
   return {
     catChuru: Number(config.economy?.startingCatChuru ?? 1330),
     xp: Number(config.economy?.startingXp ?? 1250),
@@ -204,7 +213,10 @@ function validateProfile(p) {
       "cat-guard": 1
     },
     forms: {},
-    enemyBook: []
+    enemyBook: [],
+    completedMissions: [],
+    ownedCards: [],
+    unlockedStages: []
   };
 }
 
@@ -369,6 +381,58 @@ function checkSameOrigin(request) {
   } catch {
     return false;
   }
+}
+
+const CARD_CATALOG = [{
+  id: "card-cat-kanzen", name: "CAT完全体", image: "/assets/cards/cat-kanzen.png", cost: 3,
+  description: "scratch属性のカードを2枚ずつ加え、コストを0にして効果を10倍にする。相手に10ダメージ、50%で自分に5ダメージ"
+}];
+const FIXED_TERRA_MISSION = {
+  id: "fixed-win-terra-card", title: "TERRA CARDに勝利",
+  description: "ステージ「TERRA CARD」をクリアする", type: "stage_win", stageName: "TERRA CARD", fixed: true,
+  rewards: { xp: 0, catChuru: 0, characterIds: [], cardIds: ["card-cat-kanzen"], stageIds: [] }
+};
+function boundedInt(value, max = 1000000000) { return Math.max(0, Math.min(max, Math.floor(Number(value) || 0))); }
+function safeStringIds(value, limit = 500) { return [...new Set((Array.isArray(value) ? value : []).filter(x => typeof x === "string" && x.length > 0 && x.length <= 120))].slice(0, limit); }
+function normalizeMission(input, config) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const id = String(input.id || "").trim(), title = String(input.title || "").trim().slice(0, 80);
+  const stageName = String(input.stageName || "").trim().slice(0, 120);
+  const stageId = typeof input.stageId === "string" ? input.stageId.slice(0, 120) : "";
+  if (!/^[a-zA-Z0-9_-]{3,64}$/.test(id) || id === FIXED_TERRA_MISSION.id || !title) return null;
+  if (input.type !== "stage_win" || (!stageId && !stageName)) return null;
+  const exists = (config.stages || []).some(stage => (stageId && stage.id === stageId) || (stageName && String(stage.name || "").trim().toLowerCase() === stageName.toLowerCase()));
+  if (!exists) return null;
+  const rewards = input.rewards && typeof input.rewards === "object" ? input.rewards : {};
+  const characters = new Set((config.characters || []).filter(c => c.side === "ally").map(c => c.id));
+  const stages = new Set((config.stages || []).map(stage => stage.id));
+  const cards = new Set(CARD_CATALOG.map(card => card.id));
+  return { id, title, description: String(input.description || "").slice(0, 240), type: "stage_win", stageId, stageName, fixed: false,
+    rewards: { xp: boundedInt(rewards.xp), catChuru: boundedInt(rewards.catChuru),
+      characterIds: safeStringIds(rewards.characterIds, 100).filter(x => characters.has(x)),
+      cardIds: safeStringIds(rewards.cardIds, 100).filter(x => cards.has(x)),
+      stageIds: safeStringIds(rewards.stageIds, 300).filter(x => stages.has(x)) } };
+}
+async function loadMissions(env, request) {
+  const config = await loadConfig(env, request);
+  const row = await getDb(env).prepare("SELECT value_json FROM game_config WHERE config_key = 'missions'").first();
+  let custom = [];
+  try { const data = row?.value_json ? JSON.parse(row.value_json) : []; if (Array.isArray(data)) custom = data.map(item => normalizeMission(item, config)).filter(Boolean); } catch {}
+  return [FIXED_TERRA_MISSION, ...custom.filter(item => item.id !== FIXED_TERRA_MISSION.id)];
+}
+async function readProfileForUser(db, userId, config) {
+  const row = await db.prepare("SELECT profile_json FROM profiles WHERE user_id = ?").bind(userId).first();
+  let original = null; try { original = row?.profile_json ? JSON.parse(row.profile_json) : null; } catch {}
+  return { row, profile: validateProfile(original) || starterProfile(config) };
+}
+async function saveProfileForUser(db, userId, profile, previousJson) {
+  const encoded = JSON.stringify(validateProfile(profile));
+  if (previousJson == null) {
+    await db.prepare("INSERT INTO profiles (user_id, profile_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET profile_json=excluded.profile_json, updated_at=excluded.updated_at").bind(userId, encoded, nowSeconds()).run();
+    return;
+  }
+  const result = await db.prepare("UPDATE profiles SET profile_json = ?, updated_at = ? WHERE user_id = ? AND profile_json = ?").bind(encoded, nowSeconds(), userId, previousJson).run();
+  if (!result.meta?.changes) throw new Error("プロフィールが同時に更新されました。もう一度お試しください。");
 }
 
 async function handleApi(request, env) {
@@ -720,6 +784,84 @@ async function handleApi(request, env) {
     return json({ ok: true });
   }
 
+  // Mission list and the logged-in player's claimed rewards.
+  if (path === "/api/missions" && method === "GET") {
+    const missions = await loadMissions(env, request);
+    const session = await getSession(request, env);
+    let progress = { completedMissions: [], ownedCards: [] };
+    if (session?.role === "player") {
+      const config = await loadConfig(env, request);
+      const data = await readProfileForUser(getDb(env), session.user_id, config);
+      progress = { completedMissions: data.profile.completedMissions, ownedCards: data.profile.ownedCards };
+    }
+    return json({ missions, cards: CARD_CATALOG, progress });
+  }
+  // Admin mission editor; the fixed TERRA CARD mission is always retained.
+  if (path === "/api/admin/missions" && method === "GET") {
+    const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
+    return json({ missions: await loadMissions(env, request), cards: CARD_CATALOG });
+  }
+  if (path === "/api/admin/missions" && method === "PUT") {
+    const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
+    const body = await request.json().catch(() => ({}));
+    if (!Array.isArray(body.missions) || body.missions.length > 200) return json({ error: "ミッションは200件以内で送信してください。" }, 400);
+    const config = await loadConfig(env, request);
+    const custom = body.missions.filter(item => item && item.id !== FIXED_TERRA_MISSION.id && item.fixed !== true).map(item => normalizeMission(item, config));
+    if (custom.some(item => !item)) return json({ error: "ミッション内容または対象ステージ・報酬が正しくありません。" }, 400);
+    await getDb(env).prepare("INSERT INTO game_config (config_key, value_json, updated_at) VALUES ('missions', ?, ?) ON CONFLICT(config_key) DO UPDATE SET value_json=excluded.value_json, updated_at=excluded.updated_at").bind(JSON.stringify(custom), nowSeconds()).run();
+    return json({ ok: true, missions: [FIXED_TERRA_MISSION, ...custom] });
+  }
+  // Called only when the game reports a victory. Rewards are granted once per mission.
+  if (path === "/api/missions/complete" && method === "POST") {
+    const auth = await requireSession(request, env); if (auth.error) return auth.error;
+    if (auth.session.role !== "player") return json({ error: "プレイヤーでログインしてください。" }, 403);
+    const body = await request.json().catch(() => ({}));
+    const config = await loadConfig(env, request);
+    const stage = (config.stages || []).find(item => item.id === body.stageId);
+    if (!stage) return json({ error: "対象ステージが見つかりません。" }, 404);
+    const missions = await loadMissions(env, request);
+    const norm = value => String(value || "").normalize("NFKC").trim().toLowerCase();
+    const eligible = missions.filter(m => m.type === "stage_win" && ((m.stageId && m.stageId === stage.id) || (m.stageName && norm(m.stageName) === norm(stage.name))));
+    if (!eligible.length) return json({ ok: true, completed: [], message: "このステージに対応するミッションはありません。" });
+    const db = getDb(env), data = await readProfileForUser(db, auth.session.user_id, config), completed = [];
+    for (const mission of eligible) {
+      if (data.profile.completedMissions.includes(mission.id)) continue;
+      const reward = mission.rewards || {};
+      data.profile.xp = boundedInt(data.profile.xp + boundedInt(reward.xp));
+      data.profile.catChuru = boundedInt(data.profile.catChuru + boundedInt(reward.catChuru));
+      for (const id of safeStringIds(reward.characterIds, 100)) {
+        if (!(config.characters || []).some(c => c.id === id && c.side === "ally")) continue;
+        if (!data.profile.owned.includes(id)) data.profile.owned.push(id);
+        data.profile.levels[id] = Math.max(1, Number(data.profile.levels[id] || 1));
+      }
+      for (const id of safeStringIds(reward.cardIds, 100)) if (CARD_CATALOG.some(c => c.id === id) && !data.profile.ownedCards.includes(id)) data.profile.ownedCards.push(id);
+      for (const id of safeStringIds(reward.stageIds, 300)) if ((config.stages || []).some(x => x.id === id) && !data.profile.unlockedStages.includes(id)) data.profile.unlockedStages.push(id);
+      data.profile.completedMissions.push(mission.id); completed.push(mission);
+    }
+    await saveProfileForUser(db, auth.session.user_id, data.profile, data.row?.profile_json ?? null);
+    return json({ ok: true, completed, profile: data.profile, cards: CARD_CATALOG });
+  }
+  // Admin grants currencies, characters, collectible cards and stage unlock flags.
+  if (path === "/api/admin/grants" && method === "POST") {
+    const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
+    const body = await request.json().catch(() => ({}));
+    if (typeof body.playerId !== "string" || !body.playerId) return json({ error: "配布先プレイヤーが指定されていません。" }, 400);
+    const config = await loadConfig(env, request), db = getDb(env);
+    const user = await db.prepare("SELECT id FROM users WHERE id = ?").bind(body.playerId).first();
+    if (!user) return json({ error: "プレイヤーが見つかりません。" }, 404);
+    const data = await readProfileForUser(db, body.playerId, config);
+    const xp = boundedInt(body.xp), catChuru = boundedInt(body.catChuru);
+    const characterIds = safeStringIds(body.characterIds, 100).filter(id => (config.characters || []).some(c => c.id === id && c.side === "ally"));
+    const cardIds = safeStringIds(body.cardIds, 100).filter(id => CARD_CATALOG.some(c => c.id === id));
+    const stageIds = safeStringIds(body.stageIds, 300).filter(id => (config.stages || []).some(stage => stage.id === id));
+    data.profile.xp = boundedInt(data.profile.xp + xp); data.profile.catChuru = boundedInt(data.profile.catChuru + catChuru);
+    for (const id of characterIds) { if (!data.profile.owned.includes(id)) data.profile.owned.push(id); data.profile.levels[id] = Math.max(1, Number(data.profile.levels[id] || 1)); }
+    for (const id of cardIds) if (!data.profile.ownedCards.includes(id)) data.profile.ownedCards.push(id);
+    for (const id of stageIds) if (!data.profile.unlockedStages.includes(id)) data.profile.unlockedStages.push(id);
+    await saveProfileForUser(db, body.playerId, data.profile, data.row?.profile_json ?? null);
+    return json({ ok: true, playerId: body.playerId, added: { xp, catChuru, characterIds, cardIds, stageIds }, profile: data.profile });
+  }
+
   // ガチャ
   if (path === "/api/gacha" && method === "POST") {
     const auth = await requireSession(request, env);
@@ -871,7 +1013,10 @@ async function handleApi(request, env) {
         id: row.id,
         username: row.username,
         catChuru: Number(p.catChuru || 0),
-        xp: Number(p.xp || 0)
+        xp: Number(p.xp || 0),
+        ownedCount: Array.isArray(p.owned) ? p.owned.length : 0,
+        cardCount: Array.isArray(p.ownedCards) ? p.ownedCards.length : 0,
+        unlockedStageCount: Array.isArray(p.unlockedStages) ? p.unlockedStages.length : 0
       };
     });
 
