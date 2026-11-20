@@ -72,7 +72,7 @@ def animation_frames(archive, targets, sprite_names, code, size=(88,88), quality
         found = []
         for costume in target.get("costumes", []):
             name = str(costume.get("name", ""))
-            match = re.fullmatch(re.escape(str(code)) + r"(\\d*)", name)
+            match = re.fullmatch(re.escape(str(code)) + r"(\d*)", name)
             if match:
                 found.append((int(match.group(1) or 1), name))
         found.sort(key=lambda item: item[0])
