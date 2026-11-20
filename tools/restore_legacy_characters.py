@@ -53,8 +53,15 @@ def data_uri(archive, targets, sprite_name, costume_name, size=(64,64), quality=
     costume = next((c for c in target.get("costumes",[]) if c["name"] == str(costume_name)), None)
     if costume is None: return None
     raw = archive.read(costume["md5ext"])
-    if costume.get("dataFormat") == "svg": raw = cairosvg.svg2png(bytestring=raw, output_width=max(size[0],160))
-    im = Image.open(io.BytesIO(raw)).convert("RGBA")
+    if costume.get("dataFormat") == "svg":
+        try:
+            raw = cairosvg.svg2png(bytestring=raw, output_width=max(size[0],160), output_height=max(size[1],160))
+        except Exception:
+            return None
+    try:
+        im = Image.open(io.BytesIO(raw)).convert("RGBA")
+    except Exception:
+        return None
     im.thumbnail(size, Image.Resampling.LANCZOS)
     canvas = Image.new("RGBA", size, (0,0,0,0))
     canvas.alpha_composite(im, ((size[0]-im.width)//2,(size[1]-im.height)//2))
