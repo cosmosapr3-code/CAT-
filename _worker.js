@@ -810,7 +810,7 @@ async function handleApi(request, env) {
     if (session?.role === "player") {
       const config = await loadConfig(env, request);
       const data = await readProfileForUser(getDb(env), session.user_id, config);
-      progress = { completedMissions: data.profile.completedMissions, ownedCards: data.profile.ownedCards };
+      progress = { completedMissions: data.profile.completedMissions, ownedCards: data.profile.ownedCards, unlockedStages: data.profile.unlockedStages, unlockedStageCodes: data.profile.unlockedStages.map(id => config.stages.find(stage => stage.id === id)?.legacyCode).filter(Boolean) };
     }
     return json({ missions, cards: CARD_CATALOG, progress });
   }
@@ -820,7 +820,7 @@ async function handleApi(request, env) {
     const config = await loadConfig(env, request);
     return json({
       characters: (config.characters || []).filter(c => c.side === "ally").map(c => ({ id: c.id, name: c.name })),
-      stages: (config.stages || []).map(stage => ({ id: stage.id, name: stage.name, series: stage.series || stage.chapter || "" }))
+      stages: (config.stages || []).map(stage => ({ id: stage.id, name: stage.name, legacyCode: stage.legacyCode || "", series: stage.series || stage.chapter || "" }))
     });
   }
 
@@ -845,11 +845,16 @@ async function handleApi(request, env) {
     if (auth.session.role !== "player") return json({ error: "プレイヤーでログインしてください。" }, 403);
     const body = await request.json().catch(() => ({}));
     const config = await loadConfig(env, request);
-    const stage = (config.stages || []).find(item => item.id === body.stageId);
+    const stage = (config.stages || []).find(item => item.id === body.stageId || (body.legacyCode && String(item.legacyCode || "") === String(body.legacyCode)));
     if (!stage) return json({ error: "対象ステージが見つかりません。" }, 404);
     const missions = await loadMissions(env, request);
     const norm = value => String(value || "").normalize("NFKC").trim().toLowerCase();
-    const eligible = missions.filter(m => m.type === "stage_win" && ((m.stageId && m.stageId === stage.id) || (m.stageName && norm(m.stageName) === norm(stage.name))));
+    const stageAliases = [stage.name, stage.legacyCode, stage.id].filter(Boolean).map(norm);
+    const eligible = missions.filter(m => {
+      if (m.type !== "stage_win") return false;
+      if (m.stageId && m.stageId === stage.id) return true;
+      return Boolean(m.stageName && stageAliases.includes(norm(m.stageName)));
+    });
     if (!eligible.length) return json({ ok: true, completed: [], message: "このステージに対応するミッションはありません。" });
     const db = getDb(env), data = await readProfileForUser(db, auth.session.user_id, config), completed = [];
     for (const mission of eligible) {
