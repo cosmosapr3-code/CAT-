@@ -950,133 +950,26 @@ export default {
       }
     }
 
-    // トップ画面は元のScratch/TurboWarpゲームを使用し、ログインだけを外側に追加する。
-    if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
-      const gameUrl = new URL("/CAT大戦争_完全版_1ファイル軽量版.html", request.url);
-      const gameResponse = await env.ASSETS.fetch(new Request(gameUrl, { method: "GET" }));
-      if (!gameResponse.ok) return gameResponse;
-
-      let html = await gameResponse.text();
-      html = html.replace("</head>", "<style id=\\"cat-auth-and-clean-ui\\">
-#cat-auth-gate{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:18px;box-sizing:border-box;background:radial-gradient(ellipse at 50% 15%,#393939 0,#101010 60%,#050505 100%);font-family:system-ui,sans-serif;color:#fff}
-#cat-auth-gate[hidden]{display:none!important}
-#cat-auth-card{width:min(420px,100%);box-sizing:border-box;border:2px solid #c99b42;border-radius:18px;background:linear-gradient(160deg,#333,#171717);padding:24px;box-shadow:0 18px 60px #000b;text-align:center}
-#cat-auth-card h1{margin:0 0 8px;font-size:27px;font-weight:900;color:#ffe09a}
-#cat-auth-card .cat-auth-sub{margin:0 0 20px;color:#c9c0b0;font-size:13px}
-#cat-auth-modes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
-#cat-auth-gate button,#cat-auth-gate input{font:inherit}
-#cat-auth-modes button{border:1px solid #82704e;border-radius:10px;padding:10px;background:#242424;color:#ddd;font-weight:800;cursor:pointer}
-#cat-auth-modes button.active{background:#815c20;border-color:#f2c96e;color:#fff}
-#cat-auth-form{display:grid;gap:10px;text-align:left}
-#cat-auth-form label{font-size:12px;font-weight:800;color:#e8d8b8}
-#cat-auth-form input{width:100%;box-sizing:border-box;margin-top:5px;padding:12px;border:1px solid #776b57;border-radius:9px;background:#090909;color:#fff;outline:none}
-#cat-auth-form input:focus{border-color:#f1c86d;box-shadow:0 0 0 2px #f1c86d33}
-#cat-auth-submit{margin-top:5px;border:0;border-radius:10px;padding:13px;background:linear-gradient(#f5d58c,#bd842c);color:#271a08;font-weight:900;cursor:pointer}
-#cat-auth-submit:disabled{opacity:.55;cursor:wait}
-#cat-auth-toggle{display:block;margin:13px auto 0;border:0;background:transparent;color:#f2d48f;text-decoration:underline;cursor:pointer;font-size:13px}
-#cat-auth-error{min-height:20px;margin:12px 0 0;color:#ff9d8e;font-size:12px;line-height:1.45;overflow-wrap:anywhere}
-#cat-auth-foot{margin:10px 0 0;color:#958d7e;font-size:11px}
-/* 要望どおりTurboWarpの起動旗・停止ボタン・ロード画面を表示しない */
-#loading,#launch{display:none!important}
-.green-flag-button,.stop-all-button{display:none!important;visibility:hidden!important;pointer-events:none!important}
-</style></head>");
-      html = html.replace("<body>", "<body><div id="cat-auth-gate" role="dialog" aria-modal="true" aria-labelledby="cat-auth-title">
-  <div id="cat-auth-card">
-    <h1 id="cat-auth-title">CAT大戦争</h1>
-    <p class="cat-auth-sub">ログインしてゲームを始めよう</p>
-    <div id="cat-auth-modes">
-      <button type="button" id="cat-player-mode" class="active">プレイヤー</button>
-      <button type="button" id="cat-admin-mode">運営</button>
-    </div>
-    <form id="cat-auth-form">
-      <label>ユーザー名<input id="cat-auth-username" name="username" autocomplete="username" maxlength="24" required></label>
-      <label>パスワード<input id="cat-auth-password" name="password" type="password" autocomplete="current-password" minlength="8" required></label>
-      <button id="cat-auth-submit" type="submit">ログイン</button>
-    </form>
-    <button id="cat-auth-toggle" type="button">初めての方はこちら（新規登録）</button>
-    <p id="cat-auth-error" aria-live="polite"></p>
-    <p id="cat-auth-foot">ログイン後、元のCAT大戦争が始まります。</p>
-  </div>
-</div>
-<script id="cat-login-bridge">
-(() => {
-  const gate=document.getElementById('cat-auth-gate');
-  const form=document.getElementById('cat-auth-form');
-  const username=document.getElementById('cat-auth-username');
-  const password=document.getElementById('cat-auth-password');
-  const submit=document.getElementById('cat-auth-submit');
-  const toggle=document.getElementById('cat-auth-toggle');
-  const error=document.getElementById('cat-auth-error');
-  const playerMode=document.getElementById('cat-player-mode');
-  const adminMode=document.getElementById('cat-admin-mode');
-  let mode='player', registering=false;
-  function updateMode(next){
-    mode=next; registering=false;
-    playerMode.classList.toggle('active',mode==='player');
-    adminMode.classList.toggle('active',mode==='admin');
-    toggle.hidden=mode==='admin'; updateLabels(); error.textContent='';
-  }
-  function updateLabels(){
-    submit.textContent=registering?'アカウントを作成':(mode==='admin'?'運営ログイン':'ログイン');
-    toggle.textContent=registering?'ログイン画面に戻る':'初めての方はこちら（新規登録）';
-    password.autocomplete=registering?'new-password':'current-password';
-  }
-  function enterGame(session){
-    window.CAT_AUTH={role:session.role==='admin'?'admin':'player',username:String(session.username||'')};
-    try{if(window.scaffolding&&window.CAT_AUTH.username)window.scaffolding.setUsername(window.CAT_AUTH.username);}catch(e){console.warn(e);}
-    gate.hidden=true;
-    window.dispatchEvent(new CustomEvent('CAT_AUTH_READY',{detail:window.CAT_AUTH}));
-  }
-  async function requestJson(url,options){
-    const response=await fetch(url,{credentials:'same-origin',cache:'no-store',...options});
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||'通信に失敗しました。');
-    return data;
-  }
-  playerMode.addEventListener('click',()=>updateMode('player'));
-  adminMode.addEventListener('click',()=>updateMode('admin'));
-  toggle.addEventListener('click',()=>{registering=!registering;updateLabels();error.textContent='';});
-  form.addEventListener('submit',async event=>{
-    event.preventDefault(); error.textContent=''; submit.disabled=true;
-    try{
-      const payload={username:username.value.trim(),password:password.value};
-      const result=registering
-        ?await requestJson('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
-        :await requestJson('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,mode})});
-      enterGame({role:result.role||mode,username:result.username||payload.username});
-    }catch(e){error.textContent=e.message||'ログインに失敗しました。';}
-    finally{submit.disabled=false;}
-  });
-  requestJson('/api/me',{method:'GET'}).then(enterGame).catch(()=>{gate.hidden=false;});
-})();
-</script>");
-      html = html.replace(
-        'scaffolding.setUsername("player####".replace(/#/g, () => Math.floor(Math.random() * 10)));',
-        'scaffolding.setUsername(window.CAT_AUTH?.username || "player####".replace(/#/g, () => Math.floor(Math.random() * 10)));'
-      );
-
-      const manualLaunch = /if\\s*\\(false\\)\\s*\\{\\s*scaffolding\\.start\\(\\);\\s*\\}\\s*else\\s*\\{\\s*launchScreen\\.hidden\\s*=\\s*false;\\s*launchScreen\\.addEventListener\\('click',\\s*\\(\\)\\s*=>\\s*\\{\\s*launchScreen\\.hidden\\s*=\\s*true;\\s*scaffolding\\.start\\(\\);\\s*\\}\\);\\s*launchScreen\\.focus\\(\\);\\s*\\}/;
-      const autoLaunch = `launchScreen.hidden = true;
-      loadingScreen.hidden = true;
-      await new Promise(resolve => {
-        if (window.CAT_AUTH) return resolve();
-        window.addEventListener("CAT_AUTH_READY", resolve, { once: true });
-      });
-      scaffolding.start();`;
-      if (!manualLaunch.test(html)) {
-        console.error("CAT entry: could not find original launch block");
-        return new Response("元ゲームの起動部分を確認できませんでした。", { status: 500 });
-      }
-      html = html.replace(manualLaunch, autoLaunch);
-
-      const headers = new Headers(gameResponse.headers);
-      headers.delete("content-length");
-      headers.delete("content-encoding");
-      headers.delete("etag");
-      headers.set("Cache-Control", "no-store");
-      return new Response(html, { status: gameResponse.status, headers });
-    }
-
-    return await env.ASSETS.fetch(request);
+    // 元Scratchゲームを表示。ログインだけを外側に追加する。
+const CAT_AUTH_STYLE = "#cat-auth-gate{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:18px;box-sizing:border-box;background:radial-gradient(ellipse at 50% 15%,#393939 0,#101010 60%,#050505 100%);font-family:system-ui,sans-serif;color:#fff}#cat-auth-gate[hidden]{display:none!important}#cat-auth-card{width:min(420px,100%);box-sizing:border-box;border:2px solid #c99b42;border-radius:18px;background:linear-gradient(160deg,#333,#171717);padding:24px;box-shadow:0 18px 60px #000b;text-align:center}#cat-auth-card h1{margin:0 0 8px;font-size:27px;font-weight:900;color:#ffe09a}#cat-auth-card .cat-auth-sub{margin:0 0 20px;color:#c9c0b0;font-size:13px}#cat-auth-modes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}#cat-auth-gate button,#cat-auth-gate input{font:inherit}#cat-auth-modes button{border:1px solid #82704e;border-radius:10px;padding:10px;background:#242424;color:#ddd;font-weight:800;cursor:pointer}#cat-auth-modes button.active{background:#815c20;border-color:#f2c96e;color:#fff}#cat-auth-form{display:grid;gap:10px;text-align:left}#cat-auth-form label{font-size:12px;font-weight:800;color:#e8d8b8}#cat-auth-form input{width:100%;box-sizing:border-box;margin-top:5px;padding:12px;border:1px solid #776b57;border-radius:9px;background:#090909;color:#fff;outline:none}#cat-auth-submit{margin-top:5px;border:0;border-radius:10px;padding:13px;background:linear-gradient(#f5d58c,#bd842c);color:#271a08;font-weight:900;cursor:pointer}#cat-auth-toggle{display:block;margin:13px auto 0;border:0;background:transparent;color:#f2d48f;text-decoration:underline;cursor:pointer;font-size:13px}#cat-auth-error{min-height:20px;margin:12px 0 0;color:#ff9d8e;font-size:12px}#cat-auth-foot{margin:10px 0 0;color:#958d7e;font-size:11px}#loading,#launch{display:none!important}.green-flag-button,.stop-all-button{display:none!important;visibility:hidden!important;pointer-events:none!important}";
+const CAT_AUTH_MARKUP = "<div id=\"cat-auth-gate\" role=\"dialog\" aria-modal=\"true\"><div id=\"cat-auth-card\"><h1>CAT大戦争</h1><p class=\"cat-auth-sub\">ログインしてゲームを始めよう</p><div id=\"cat-auth-modes\"><button type=\"button\" id=\"cat-player-mode\" class=\"active\">プレイヤー</button><button type=\"button\" id=\"cat-admin-mode\">運営</button></div><form id=\"cat-auth-form\"><label>ユーザー名<input id=\"cat-auth-username\" autocomplete=\"username\" maxlength=\"24\" required></label><label>パスワード<input id=\"cat-auth-password\" type=\"password\" autocomplete=\"current-password\" minlength=\"8\" required></label><button id=\"cat-auth-submit\" type=\"submit\">ログイン</button></form><button id=\"cat-auth-toggle\" type=\"button\">初めての方はこちら（新規登録）</button><p id=\"cat-auth-error\" aria-live=\"polite\"></p><p id=\"cat-auth-foot\">ログイン後、元のCAT大戦争が始まります。</p></div></div><script id=\"cat-login-bridge\">(()=>{const gate=document.getElementById('cat-auth-gate'),form=document.getElementById('cat-auth-form'),username=document.getElementById('cat-auth-username'),password=document.getElementById('cat-auth-password'),submit=document.getElementById('cat-auth-submit'),toggle=document.getElementById('cat-auth-toggle'),error=document.getElementById('cat-auth-error'),player=document.getElementById('cat-player-mode'),admin=document.getElementById('cat-admin-mode');let mode='player',registering=false;function labels(){submit.textContent=registering?'アカウントを作成':(mode==='admin'?'運営ログイン':'ログイン');toggle.hidden=mode==='admin';toggle.textContent=registering?'ログイン画面に戻る':'初めての方はこちら（新規登録）';password.autocomplete=registering?'new-password':'current-password';}function enter(session){window.CAT_AUTH={role:session.role==='admin'?'admin':'player',username:String(session.username||'')};try{if(window.scaffolding)window.scaffolding.setUsername(window.CAT_AUTH.username);}catch(e){}gate.hidden=true;window.dispatchEvent(new CustomEvent('CAT_AUTH_READY',{detail:window.CAT_AUTH}));}async function req(url,opts){const res=await fetch(url,{credentials:'same-origin',cache:'no-store',...opts}),data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'通信に失敗しました。');return data;}player.addEventListener('click',()=>{mode='player';registering=false;player.classList.add('active');admin.classList.remove('active');labels();error.textContent='';});admin.addEventListener('click',()=>{mode='admin';registering=false;admin.classList.add('active');player.classList.remove('active');labels();error.textContent='';});toggle.addEventListener('click',()=>{registering=!registering;labels();error.textContent='';});form.addEventListener('submit',async e=>{e.preventDefault();submit.disabled=true;error.textContent='';try{const payload={username:username.value.trim(),password:password.value},result=registering?await req('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}):await req('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,mode})});enter({role:result.role||mode,username:result.username||payload.username});}catch(err){error.textContent=err.message||'ログインに失敗しました。';}finally{submit.disabled=false;}});req('/api/me',{method:'GET'}).then(enter).catch(()=>{gate.hidden=false;});})();</script>";
+if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
+  const gameUrl = new URL("/CAT大戦争_完全版_1ファイル軽量版.html", request.url);
+  const gameResponse = await env.ASSETS.fetch(new Request(gameUrl, { method: "GET" }));
+  if (!gameResponse.ok) return gameResponse;
+  let html = await gameResponse.text();
+  html = html.replace("</head>", '<style id="cat-auth-and-clean-ui">' + CAT_AUTH_STYLE + "</style></head>");
+  html = html.replace("<body>", "<body>" + CAT_AUTH_MARKUP);
+  html = html.replace('scaffolding.setUsername("player####".replace(/#/g, () => Math.floor(Math.random() * 10)));', 'scaffolding.setUsername(window.CAT_AUTH?.username || "player####".replace(/#/g, () => Math.floor(Math.random() * 10)));');
+  const manualLaunch = /if\s*\(false\)\s*\{\s*scaffolding\.start\(\);\s*\}\s*else\s*\{\s*launchScreen\.hidden\s*=\s*false;\s*launchScreen\.addEventListener\('click',\s*\(\)\s*=>\s*\{\s*launchScreen\.hidden\s*=\s*true;\s*scaffolding\.start\(\);\s*\}\);\s*launchScreen\.focus\(\);\s*\}/;
+  const autoLaunch = "launchScreen.hidden = true;\nloadingScreen.hidden = true;\nawait new Promise(resolve => {\n  if (window.CAT_AUTH) return resolve();\n  window.addEventListener('CAT_AUTH_READY', resolve, { once: true });\n});\nscaffolding.start();";
+  if (!manualLaunch.test(html)) return new Response("元ゲームの起動部分を確認できませんでした。", { status: 500 });
+  html = html.replace(manualLaunch, autoLaunch);
+  const headers = new Headers(gameResponse.headers);
+  headers.delete("content-length"); headers.delete("content-encoding"); headers.delete("etag");
+  headers.set("Cache-Control", "no-store");
+  return new Response(html, { status: gameResponse.status, headers });
+}
+return await env.ASSETS.fetch(request);
   }
 };
