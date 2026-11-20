@@ -961,7 +961,7 @@ if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/inde
   html = html.replace("</head>", '<style id="cat-auth-and-clean-ui">' + CAT_AUTH_STYLE + "</style></head>");
   html = html.replace("<body>", "<body>" + CAT_AUTH_MARKUP);
   html = html.replace('scaffolding.setUsername("player####".replace(/#/g, () => Math.floor(Math.random() * 10)));', 'scaffolding.setUsername(window.CAT_AUTH?.username || "player####".replace(/#/g, () => Math.floor(Math.random() * 10)));');
-  const manualLaunch = /if\s*\(false\)\s*\{\s*scaffolding\.start\(\);\s*\}\s*else\s*\{\s*launchScreen\.hidden\s*=\s*false;\s*launchScreen\.addEventListener\('click',\s*\(\)\s*=>\s*\{\s*launchScreen\.hidden\s*=\s*true;\s*scaffolding\.start\(\);\s*\}\);\s*launchScreen\.focus\(\);\s*\}/;
+  const manualLaunch = new RegExp("if\\s*\\(false\\)\\s*\\{\\s*scaffolding\\.start\\(\\);\\s*\\}\\s*else\\s*\\{\\s*launchScreen\\.hidden\\s*=\\s*false;\\s*launchScreen\\.addEventListener\\('click',\\s*\\(\\)\\s*=>\\s*\\{\\s*launchScreen\\.hidden\\s*=\\s*true;\\s*scaffolding\\.start\\(\\);\\s*\\}\\);\\s*launchScreen\\.focus\\(\\);\\s*\\}");
   const autoLaunch = "launchScreen.hidden = true;\nloadingScreen.hidden = true;\nawait new Promise(resolve => {\n  if (window.CAT_AUTH) return resolve();\n  window.addEventListener('CAT_AUTH_READY', resolve, { once: true });\n});\nscaffolding.start();";
   if (!manualLaunch.test(html)) return new Response("元ゲームの起動部分を確認できませんでした。", { status: 500 });
   html = html.replace(manualLaunch, autoLaunch);
