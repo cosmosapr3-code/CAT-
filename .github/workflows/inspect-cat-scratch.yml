@@ -1,0 +1,28 @@
+name: Inspect CAT Scratch project for stage victory signal
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/inspect_cat_scratch.py'
+      - '.github/workflows/inspect-cat-scratch.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Inspect Scratch variables, broadcasts and victory blocks
+        run: python tools/inspect_cat_scratch.py | tee scratch-inspection.json
+      - name: Upload inspection summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: scratch-inspection
+          path: scratch-inspection.json
