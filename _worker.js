@@ -263,10 +263,14 @@ function mergeCharacterRoster(legacyCharacters, savedCharacters) {
     merged.set(saved.id, {
       ...original, ...saved, image,
       encyclopediaImage: original.encyclopediaImage,
+      walkFrames: original.walkFrames,
+      attackFrames: original.attackFrames,
       forms: Array.isArray(saved.forms) && saved.forms.length
         ? saved.forms.map((form, index) => ({
             ...(original.forms?.[index] || {}), ...form,
-            image: form.image?.startsWith("data:image/") ? form.image : original.forms?.[index]?.image
+            image: form.image?.startsWith("data:image/") ? form.image : original.forms?.[index]?.image,
+            walkFrames: original.forms?.[index]?.walkFrames,
+            attackFrames: original.forms?.[index]?.attackFrames
           }))
         : original.forms
     });
@@ -690,8 +694,14 @@ async function handleApi(request, env) {
     for(const character of (configToSave.characters||[])) {
       if(typeof character.image==="string"&&character.image.startsWith("data:image/"))delete character.image;
       delete character.encyclopediaImage;
+      delete character.walkFrames;
+      delete character.attackFrames;
       if(Array.isArray(character.forms))character.forms=character.forms.map(form=>{
-        const copy={...form};if(typeof copy.image==="string"&&copy.image.startsWith("data:image/"))delete copy.image;return copy;
+        const copy={...form};
+        if(typeof copy.image==="string"&&copy.image.startsWith("data:image/"))delete copy.image;
+        delete copy.walkFrames;
+        delete copy.attackFrames;
+        return copy;
       });
     }
     for(const stage of (configToSave.stages||[]))if(typeof stage.titleImage==="string"&&stage.titleImage.startsWith("data:image/"))delete stage.titleImage;
