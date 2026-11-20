@@ -128,7 +128,8 @@
           const msg=d.getElementById('error-message')?.textContent||'元ゲームの読み込みに失敗しました。';
           bootError(msg);return;
         }
-        if(w.scaffolding&&w.CAT_SCRATCH_READY===true)finishGameBoot(w,d);
+        const projectLoad=d.getElementById('loading');
+        if(w.scaffolding&&projectLoad&&projectLoad.hidden)finishGameBoot(w,d);
       }catch(e){
         bootError('ゲーム画面に接続できませんでした: '+(e&&e.message||e));
       }
