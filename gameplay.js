@@ -16,8 +16,11 @@
     .cash-fill{height:100%;width:10%;background:linear-gradient(90deg,#f2b935,#ffe58a);transition:width .1s linear}
     .worker-upgrade{min-width:126px;border:2px solid #b57b21;background:linear-gradient(#fff3c8,#f4cf7d);border-radius:12px;padding:9px 12px;font-weight:900;color:#54360e;cursor:pointer}
     .worker-upgrade:disabled{opacity:.55;cursor:not-allowed}
-    .unit-deploy-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin-top:10px}
-    .unit-deploy-card{position:relative;overflow:hidden;min-height:94px;border:2px solid #b9a47a;border-radius:12px;background:linear-gradient(#fffdf4,#eddfbd);color:#3e2e1b;padding:6px 4px 8px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;cursor:pointer;box-shadow:0 2px 0 #927b4c;transition:transform .08s,border-color .08s}
+    .unit-deploy-panel{margin:8px 0 14px;padding:10px;border:2px solid #9f8b67;border-radius:14px;background:linear-gradient(#e8dfca,#cfc1a3);box-shadow:inset 0 1px 0 #fff8}
+    .unit-deploy-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 8px;color:#493b27;font-weight:900;font-size:13px}
+    .unit-deploy-hint{font-size:11px;font-weight:700;opacity:.75}
+    .unit-deploy-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin-top:0}
+    .unit-deploy-card{position:relative;overflow:hidden;min-height:92px;border:2px solid #b9a47a;border-radius:9px;background:linear-gradient(#fffdf4,#eddfbd);color:#3e2e1b;padding:5px 4px 7px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;cursor:pointer;box-shadow:0 2px 0 #927b4c;transition:transform .08s,border-color .08s}
     .unit-deploy-card:active{transform:translateY(2px);box-shadow:none}
     .unit-deploy-card img{width:52px;height:50px;object-fit:contain;filter:drop-shadow(0 1px 1px #0004)}
     .unit-deploy-card b{font-size:11px;line-height:1.2;max-width:100%;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
@@ -26,6 +29,11 @@
     .unit-deploy-card .cooldown-mask{position:absolute;inset:0;background:#24201b99;color:white;display:none;align-items:center;justify-content:center;font-size:20px;font-weight:900;text-shadow:0 2px 4px #000}
     .unit-deploy-card.cooling .cooldown-mask{display:flex}
     .unit-deploy-card .form-mark{position:absolute;right:4px;top:3px;background:#7451a2;color:white;border-radius:9px;padding:1px 4px;font-size:9px}
+    .unit-deploy-card .cost-label{display:block;font-size:11px;font-weight:900;color:#6d4a18}
+    .unit-deploy-card:disabled .cost-label{color:#875c51}
+    .unit-deploy-card img{flex:1 1 auto;min-height:42px}
+    .battle-economy{position:relative}
+    @media(max-width:620px){.unit-deploy-panel{padding:7px}.unit-deploy-grid{gap:4px}.unit-deploy-card{min-height:78px;padding:3px 2px 5px}.unit-deploy-card img{width:40px;height:40px;min-height:38px}.unit-deploy-card b{font-size:10px}.unit-deploy-card small{font-size:10px}.unit-deploy-card .cooldown-mask{font-size:16px}}
     .legacy-stage-groups{display:grid;gap:10px}
     .legacy-stage-group{border:1px solid var(--line,#dfd6c5);border-radius:14px;padding:8px;background:#fffaf0}
     .legacy-stage-group summary{font-weight:900;cursor:pointer;padding:8px;color:#4d3b24}
@@ -61,12 +69,24 @@
       main.appendChild(page);
     }
     const wrap = document.querySelector('.battle-wrap');
+    const controls = $id('deployButtons');
+    if (wrap && controls && !$id('unitDeployPanel')) {
+      const panel = document.createElement('section');
+      panel.id = 'unitDeployPanel'; panel.className = 'unit-deploy-panel';
+      panel.innerHTML = '<div class="unit-deploy-heading"><span>出撃キャラクター</span><span class="unit-deploy-hint">お金と再生産時間を確認してタップ</span></div>';
+      controls.classList.remove('battle-controls');
+      controls.classList.add('unit-deploy-grid');
+      controls.parentNode.insertBefore(panel, controls);
+      panel.appendChild(controls);
+    }
     if (wrap && !$id('battleEconomy')) {
       const economy = document.createElement('div');
       economy.id = 'battleEconomy'; economy.className = 'battle-economy';
-      economy.innerHTML = '<div><div class="cash-head"><span>💰 お金</span><span id="cashLabel">0 / 5,000</span></div><div class="cash-track"><div id="cashFill" class="cash-fill"></div></div></div><button id="workerUpgradeBtn" class="worker-upgrade">働きネコ Lv.1<br><small>強化 1,000円</small></button>';
-      const controls = $id('deployButtons');
-      if (controls) wrap.insertBefore(economy, controls);
+      economy.innerHTML = '<div><div class="cash-head"><span>💰 お金</span><span id="cashLabel">500 / 5,000</span></div><div class="cash-track"><div id="cashFill" class="cash-fill"></div></div><small class="unit-deploy-hint">時間経過と敵撃破でお金が増える</small></div><button id="workerUpgradeBtn" class="worker-upgrade">働きネコ Lv.1<br><small>強化 ￥1,000</small></button>';
+      const panel = $id('unitDeployPanel');
+      if (panel && panel.parentNode === wrap) wrap.insertBefore(economy, panel);
+      else if (controls && controls.parentNode === wrap) wrap.insertBefore(economy, controls);
+      else wrap.appendChild(economy);
     }
     const energyLabel = document.querySelector('#energyLabel')?.closest('.battle-top');
     const energyBar = $id('energyBar')?.parentElement;
@@ -83,7 +103,11 @@
     const form = base.forms.find(f => Number(f.level) === level) || base.forms[0];
     if (level === 1) return base;
     const evolved = config.characters.find(c => c.id === form.id);
-    return evolved ? { ...base, ...evolved, id: base.id, baseId: base.id, formLevel: level, forms: base.forms, cost: base.cost, reproduction: base.reproduction } : { ...base, name: form.name, image: form.image, formLevel: level, baseId: base.id };
+    return evolved ? { ...base, ...evolved, id: base.id, baseId: base.id, formLevel: level, forms: base.forms, cost: base.cost, reproduction: base.reproduction,
+      walkFrames: form.walkFrames || evolved.walkFrames || base.walkFrames,
+      attackFrames: form.attackFrames || evolved.attackFrames || base.attackFrames } :
+      { ...base, name: form.name, image: form.image, walkFrames: form.walkFrames || base.walkFrames,
+        attackFrames: form.attackFrames || base.attackFrames, formLevel: level, baseId: base.id };
   }
 
   function markEnemySeen(id) {
@@ -99,7 +123,7 @@
   function renderEnemyBook() {
     if (!LEGACY_DATA || !$id('legacyEnemyBookGrid')) return;
     const enemies = LEGACY_DATA.characters.filter(c => c.side === 'enemy');
-    const known = new Set(profile?.enemyBook || LEGACY_DATA.initialEnemyBook || []);
+    const known = new Set(profile?.enemyBook || []);
     $id('legacyEnemyBookStats').innerHTML = `<span class="stat">発見 ${known.size} / ${enemies.length}</span>`;
     $id('legacyEnemyBookGrid').innerHTML = enemies.map((enemy, index) => {
       const unlocked = known.has(enemy.id);
@@ -117,7 +141,10 @@
       return { ...original, ...saved,
         image: saved.image?.startsWith('data:image/') ? saved.image : original.image,
         encyclopediaImage: original.encyclopediaImage,
-        forms: original.forms
+        forms: original.forms,
+        walkFrames: original.walkFrames,
+        attackFrames: original.attackFrames,
+        attackMode: original.attackMode
       };
     });
     for (const c of (config.characters || [])) if (!current.has(c.id)) chars.push(c);
@@ -205,13 +232,15 @@
     if (raf) cancelAnimationFrame(raf);
     battle = { stage, time:0, playerBase:5000, enemyBase:5000, cash:500, cashMax:5000, cashRate:35, workerLevel:1,
       units:[], waveState:(stage.enemyWaves || []).map(w => ({wave:w,spawned:0,next:Number(w.at || 0)})),
-      effects:[],done:false,team,kills:0 };
+      effects:[],done:false,team,kills:0, spawnSide:0, battleEndTimer:0 };
     playerCooldowns = {};
     $('battleTitle').textContent = stage.name; $('battleResult').classList.add('hidden');
     const grid = $('deployButtons'); grid.classList.add('unit-deploy-grid');
+    const panel = $id('unitDeployPanel');
+    if (panel) panel.querySelector('.unit-deploy-heading').innerHTML = '<span>出撃キャラクター</span><span class="unit-deploy-hint">最大10体 · お金が足りない時は灰色表示</span>';
     grid.innerHTML = team.map(base => {
       const c=currentForm(base);
-      return `<button class="unit-deploy-card" data-deploy="${escapeAttr(base.id)}"><img src="${escapeAttr(c.image || window.CAT_MEDIA.cat)}" onerror="this.src=window.CAT_MEDIA.cat"><b>${escapeHtml(c.name)}</b><small>￥${money(base.cost)}</small><span class="cooldown-mask" data-cooldown="${escapeAttr(base.id)}"></span>${c.formLevel>1 ? `<span class="form-mark">第${c.formLevel}形態</span>` : ''}</button>`;
+      return `<button type="button" class="unit-deploy-card" data-deploy="${escapeAttr(base.id)}" title="${escapeAttr(c.name)}"><img src="${escapeAttr(c.image || window.CAT_MEDIA.cat)}" onerror="this.src=window.CAT_MEDIA.cat"><b>${escapeHtml(c.name)}</b><small class="cost-label">￥${money(base.cost)}</small><span class="cooldown-mask" data-cooldown="${escapeAttr(base.id)}"></span>${c.formLevel>1 ? `<span class="form-mark">第${c.formLevel}形態</span>` : ''}</button>`;
     }).join('');
     grid.querySelectorAll('[data-deploy]').forEach(b => b.onclick = () => deploy(b.dataset.deploy));
     $('battleMusic').value = stage.music || $('battleMusic').value; if (stage.music) playTrack(stage.music);
@@ -232,13 +261,18 @@
     const label=$('cashLabel'), fill=$('cashFill'), up=$('workerUpgradeBtn');
     if(label) label.textContent=`${money(Math.floor(battle.cash))} / ${money(battle.cashMax)}`;
     if(fill) fill.style.width=`${Math.max(0,Math.min(100,battle.cash/battle.cashMax*100))}%`;
-    if(up){const cost=Math.round(1000*Math.pow(1.65,battle.workerLevel-1));up.innerHTML=`働きネコ Lv.${battle.workerLevel}<br><small>${battle.workerLevel>=8?'MAX':`強化 ￥${money(cost)}`}</small>`;up.disabled=battle.workerLevel>=8||battle.cash<cost;}
+    if(up){const cost=Math.round(1000*Math.pow(1.65,battle.workerLevel-1));up.innerHTML=`働きネコ Lv.${battle.workerLevel}<br><small>${battle.workerLevel>=8?'最大レベル':`強化 ￥${money(cost)}`}</small>`;up.disabled=battle.workerLevel>=8||battle.cash<cost;}
     document.querySelectorAll('[data-deploy]').forEach(btn=>{
       const base=charById(btn.dataset.deploy);if(!base)return;
       const cd=Math.max(0,Number(playerCooldowns[base.id]||0)-battle.time);
-      btn.disabled=battle.done||battle.cash<Number(base.cost||0)||cd>0;
+      const affordable=battle.cash>=Number(base.cost||0);
+      btn.disabled=battle.done||!affordable||cd>0;
       btn.classList.toggle('cooling',cd>0);
-      const mask=btn.querySelector('.cooldown-mask');if(mask)mask.textContent=cd>0?`${cd.toFixed(1)}s`:'';
+      btn.classList.toggle('unaffordable',!affordable);
+      const mask=btn.querySelector('.cooldown-mask');
+      if(mask)mask.textContent=cd>0?`${Math.ceil(cd)}`:'';
+      const cost=btn.querySelector('.cost-label');
+      if(cost)cost.textContent=cd>0?`再生産 ${Math.ceil(cd)}秒`:`￥${money(base.cost||0)}`;
     });
   }
 
@@ -252,96 +286,195 @@
 
   makeUnit = function(c,side,x) {
     const st=side==='ally'?unitStats(c):{hp:Number(c.hp||1),attack:Number(c.attack||0)};
-    return {char:c,side,x,y:274+Math.random()*12,hp:st.hp,maxHp:st.hp,attack:st.attack,attackTimer:.25,
-      attackAnim:0,flash:0,stopped:0,weak:0,knockback:0,invuln:0,kbLeft:Math.max(1,Number(c.kb||1)),
-      walkPhase:Math.random()*Math.PI*2,baseTimer:.25};
+    const maxHp=Math.max(1,Number(st.hp)||1);
+    const kbTotal=Math.max(1,Math.floor(Number(c.kb)||1));
+    return {char:c,side,x,y:276+Math.random()*22,hp:maxHp,maxHp,attack:Math.max(1,Number(st.attack)||1),
+      attackTimer:.35,attackAnim:0,attackAnimDuration:.52,flash:0,stopped:0,weak:0,knockback:0,
+      invuln:0,kbTotal,kbRemaining:kbTotal,nextKbHp:kbTotal>1?maxHp*(kbTotal-1)/kbTotal:0,
+      walkPhase:Math.random()*Math.PI*2,baseTimer:.2,moving:true};
   };
+
+  function applyHit(attacker,target,units,baseAttack=false) {
+    if(!attacker||!target||target.hp<=0)return 0;
+    let damage=Math.max(1,Number(attacker.attack)||1);
+    const abilities=Array.isArray(attacker.char.abilities)?attacker.char.abilities:[];
+    if(attacker.weak>0)damage*=.55;
+    if(abilities.includes('lowHpBoost')&&attacker.hp<attacker.maxHp*.5)damage*=1.6;
+    const critical=abilities.includes('critical')&&Math.random()<.25;
+    if(critical)damage*=2.5;
+    damage=Math.max(1,Math.round(damage));
+    if(baseAttack){target.hp-=damage;return damage;}
+    target.hp-=damage;target.flash=.18;target.invuln=.08;
+    if(abilities.includes('stop'))target.stopped=Math.max(target.stopped,1.5);
+    if(abilities.includes('weaken'))target.weak=Math.max(target.weak,3);
+    if(abilities.includes('knockback'))target.knockback=Math.max(target.knockback,.25);
+    if(target.kbRemaining>1&&target.hp<=target.nextKbHp){
+      target.kbRemaining--;
+      target.nextKbHp=target.kbRemaining>1?target.maxHp*(target.kbRemaining-1)/target.kbTotal:0;
+      target.knockback=Math.max(target.knockback,.32);
+      target.x+=(target.side==='enemy'?1:-1)*25;
+      target.invuln=Math.max(target.invuln,.28);
+      battle.effects.push({kind:'knockback',x:target.x,y:target.y-28,life:.3,max:.3,color:'#fff1bd'});
+    }
+    battle.effects.push({kind:'hit',x:target.x,y:target.y-38,life:.42,max:.42,color:critical?'#fff06a':(attacker.side==='ally'?'#f6c84a':'#e85a58'),damage,critical});
+    return damage;
+  }
 
   frame = function(now) {
     if(!battle||battle.done)return;
-    const dt=Math.min(.05,Math.max(0,(now-lastFrame)/1000||0))*battleSpeed;lastFrame=now;battle.time+=dt;
+    const dt=Math.min(.05,Math.max(0,(now-lastFrame)/1000||0))*battleSpeed;
+    lastFrame=now;battle.time+=dt;
     battle.cash=Math.min(battle.cashMax,battle.cash+battle.cashRate*dt);
+
     for(const st of battle.waveState){
       const w=st.wave;
       if(st.spawned<Number(w.count||1)&&battle.time>=st.next){
         const c=charById(w.characterId);
         if(c&&c.side==='enemy'){
-          const e=makeUnit(c,'enemy',800+Math.random()*12),scale=Number(w.hpMultiplier||1)*Number(battle.stage.multiplier||1);
-          e.hp*=scale;e.maxHp=e.hp;e.attack*=Number(w.attackMultiplier||1)*Number(battle.stage.multiplier||1);battle.units.push(e);
+          const lane=(st.spawned%3)*13;
+          const e=makeUnit(c,'enemy',824+Math.random()*8);
+          e.y=276+lane;
+          const scale=Number(w.hpMultiplier||1)*Number(battle.stage.multiplier||1);
+          e.hp*=scale;e.maxHp=e.hp;e.attack*=Number(w.attackMultiplier||1)*Number(battle.stage.multiplier||1);
+          e.kbRemaining=e.kbTotal;e.nextKbHp=e.kbTotal>1?e.maxHp*(e.kbTotal-1)/e.kbTotal:0;
+          battle.units.push(e);
         }
         st.spawned++;st.next=battle.time+Math.max(1,Number(w.interval||10));
       }
     }
+
     const units=battle.units;
     for(const u of units){
       if(u.hp<=0)continue;
-      u.flash=Math.max(0,u.flash-dt);u.stopped=Math.max(0,u.stopped-dt);u.weak=Math.max(0,u.weak-dt);
-      u.knockback=Math.max(0,u.knockback-dt);u.invuln=Math.max(0,u.invuln-dt);u.attackAnim=Math.max(0,u.attackAnim-dt);
-      u.attackTimer-=dt;u.baseTimer-=dt;u.walkPhase+=dt*7;
+      u.flash=Math.max(0,u.flash-dt);u.stopped=Math.max(0,u.stopped-dt);
+      u.weak=Math.max(0,u.weak-dt);u.knockback=Math.max(0,u.knockback-dt);
+      u.invuln=Math.max(0,u.invuln-dt);u.attackAnim=Math.max(0,u.attackAnim-dt);
+      u.attackTimer-=dt;u.baseTimer-=dt;u.walkPhase+=dt*8;
       if(u.stopped>0||u.knockback>0)continue;
-      const range=Math.max(38,Number(u.char.range||100)*.9);
-      const foes=units.filter(v=>v.hp>0&&v.side!==u.side&&(u.side==='ally'?v.x>=u.x-10:v.x<=u.x+10));
-      const target=foes.filter(v=>Math.abs(v.x-u.x)<=range).sort((a,b)=>Math.abs(a.x-u.x)-Math.abs(b.x-u.x))[0];
-      if(target&&u.attackTimer<=0){
-        let damage=Math.max(1,u.attack*(u.weak>0?.55:1));const ab=Array.isArray(u.char.abilities)?u.char.abilities:[];
-        if(ab.includes('lowHpBoost')&&u.hp<u.maxHp*.5)damage*=1.6;
-        if(ab.includes('critical')&&Math.random()<.25)damage*=2.5;
-        u.attackAnim=.28;u.attackTimer=Math.min(5,Math.max(.9,Number(u.char.cooldown||2)*.65));target.hp-=damage;target.flash=.22;
-        battle.effects.push({kind:'hit',x:target.x,y:target.y-34,life:.24,max:.24,color:u.side==='ally'?'#f6c84a':'#e85a58',damage:Math.round(damage)});
-        if(ab.includes('stop'))target.stopped=1.5;if(ab.includes('weaken'))target.weak=3;
-        if(ab.includes('knockback')){target.knockback=.22;target.x+=target.side==='enemy'?25:-25;target.kbLeft=Math.max(0,target.kbLeft-1);}
-        if(ab.includes('wave')||ab.includes('surge')){
-          const radius=ab.includes('surge')?95:145;
-          for(const other of units)if(other.hp>0&&other.side!==u.side&&other!==target&&Math.abs(other.x-target.x)<radius){other.hp-=damage*(ab.includes('surge')?.35:.4);other.flash=.15;}
-          battle.effects.push({kind:'wave',x:target.x,y:target.y-28,life:.5,max:.5,color:ab.includes('surge')?'#d29aff':'#72dbec'});
+
+      const direction=u.side==='ally'?1:-1;
+      const range=Math.max(32,Math.min(360,Number(u.char.range||100)));
+      const foes=units.filter(v=>v.hp>0&&v.side!==u.side&&direction*(v.x-u.x)>=-4);
+      const target=foes.filter(v=>Math.abs(v.x-u.x)<=range)
+        .sort((a,b)=>Math.abs(a.x-u.x)-Math.abs(b.x-u.x))[0];
+
+      if(target){
+        // Units stop advancing as soon as an opponent enters attack range.
+        u.moving=false;
+        if(u.attackTimer<=0){
+          const group=u.char.attackMode==='area'
+            ?foes.filter(v=>Math.abs(v.x-u.x)<=range)
+            :[target];
+          u.attackAnim=u.attackAnimDuration;
+          u.attackTimer=Math.max(.45,Number(u.char.cooldown||2.4));
+          for(const victim of group)applyHit(u,victim,units,false);
+          if(u.char.abilities?.includes('wave')||u.char.abilities?.includes('surge')){
+            const radius=u.char.abilities.includes('surge')?115:180;
+            for(const victim of foes){
+              if(victim!==target&&victim.hp>0&&Math.abs(victim.x-target.x)<=radius)
+                applyHit({...u,attack:u.attack*(u.char.abilities.includes('surge')?.35:.4)},victim,units,false);
+            }
+            battle.effects.push({kind:'wave',x:target.x,y:target.y-30,life:.55,max:.55,color:u.char.abilities.includes('surge')?'#d29aff':'#72dbec'});
+          }
         }
-      } else if(!target){
-        const baseX=u.side==='ally'?846:54,dist=Math.abs(baseX-u.x);
-        if(dist>42){const rawSpeed=Number(u.char.speed||18);const runSpeed=u.side==='enemy'?Math.min(48,Math.max(14,rawSpeed*1.25)):Math.min(65,Math.max(16,rawSpeed*1.25));u.x+=(u.side==='ally'?1:-1)*runSpeed*dt;}
-        else if(u.baseTimer<=0){
-          const damage=Math.max(1,u.attack);if(u.side==='ally')battle.enemyBase-=damage;else battle.playerBase-=damage;
-          u.baseTimer=Math.max(.6,Number(u.char.cooldown||2));u.attackAnim=.25;
-          battle.effects.push({kind:'base',x:baseX,y:205,life:.3,max:.3,color:u.side==='ally'?'#f3bd41':'#dc5b55',damage:Math.round(damage)});
+      } else {
+        u.moving=true;
+        const baseX=u.side==='ally'?852:48;
+        const distance=Math.abs(baseX-u.x);
+        if(distance>38){
+          const rawSpeed=Math.max(.1,Number(u.char.speed)||2);
+          const runSpeed=Math.max(8,Math.min(80,8+rawSpeed*6.2));
+          const obstruction=foes.some(v=>Math.abs(v.x-u.x)<24);
+          if(!obstruction)u.x+=direction*runSpeed*dt;
+        } else if(u.baseTimer<=0){
+          u.attackAnim=u.attackAnimDuration;
+          u.attackTimer=Math.max(.45,Number(u.char.cooldown||2.4));
+          u.baseTimer=u.attackTimer;
+          if(u.side==='ally'){
+            battle.enemyBase-=u.attack;
+            battle.effects.push({kind:'base',x:baseX,y:205,life:.38,max:.38,color:'#f3bd41',damage:Math.round(u.attack)});
+          }else{
+            battle.playerBase-=u.attack;
+            battle.effects.push({kind:'base',x:baseX,y:205,life:.38,max:.38,color:'#dc5b55',damage:Math.round(u.attack)});
+          }
         }
       }
-      if(u.side==='enemy'&&u.x<50)u.x=50;if(u.side==='ally'&&u.x>850)u.x=850;
+      u.x=Math.max(35,Math.min(865,u.x));
     }
+
     for(const dead of units.filter(u=>u.hp<=0&&u.side==='enemy'&&!u.rewarded)){
-      dead.rewarded=true;battle.kills++;battle.cash=Math.min(battle.cashMax,battle.cash+Number(dead.char.reward||30));markEnemySeen(dead.char.id);
+      dead.rewarded=true;battle.kills++;
+      battle.cash=Math.min(battle.cashMax,battle.cash+Number(dead.char.reward||30));
+      markEnemySeen(dead.char.id);
     }
     battle.units=units.filter(u=>u.hp>0&&u.x>20&&u.x<880);
-    for(const e of battle.effects)e.life-=dt;battle.effects=battle.effects.filter(e=>e.life>0);
+    for(const effect of battle.effects)effect.life-=dt;
+    battle.effects=battle.effects.filter(effect=>effect.life>0);
+
     drawBattle();
     $('battleClock').textContent=new Date(battle.time*1000).toISOString().slice(14,19);
     $('playerBaseLabel').textContent=`${Math.max(0,Math.round(battle.playerBase/50))}%`;
     $('enemyBaseLabel').textContent=`${Math.max(0,Math.round(battle.enemyBase/50))}%`;
     updateBattleEconomy();
-    if(battle.enemyBase<=0)finishBattle(true);else if(battle.playerBase<=0)finishBattle(false);else raf=requestAnimationFrame(frame);
+    if(battle.enemyBase<=0)finishBattle(true);
+    else if(battle.playerBase<=0)finishBattle(false);
+    else raf=requestAnimationFrame(frame);
   };
+
+  const battleImageCache = imageCache || {};
+  function getBattleImage(src) {
+    if(!src)return null;
+    if(!battleImageCache[src]){const image=new Image();image.src=src;battleImageCache[src]=image;}
+    return battleImageCache[src];
+  }
 
   drawBattle = function() {
     const cv=$('battleCanvas'),ctx=cv.getContext('2d'),w=cv.width,h=cv.height;
     const g=ctx.createLinearGradient(0,0,0,h);g.addColorStop(0,'#94c5cb');g.addColorStop(.55,'#c0d5a0');g.addColorStop(1,'#80a45d');
-    ctx.fillStyle=g;ctx.fillRect(0,0,w,h);ctx.fillStyle='#7da653';ctx.fillRect(0,274,w,86);ctx.fillStyle='#cbb47a';ctx.fillRect(0,310,w,50);
+    ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+    ctx.fillStyle='#7da653';ctx.fillRect(0,274,w,86);ctx.fillStyle='#cbb47a';ctx.fillRect(0,310,w,50);
     for(let i=0;i<30;i++){const x=(i*47+13)%w;ctx.fillStyle=i%2?'#6c984c':'#8eae58';ctx.beginPath();ctx.ellipse(x,278+(i%3)*8,18,6,0,0,Math.PI*2);ctx.fill();}
     drawBase(ctx,38,220,'#e5b85e');drawBase(ctx,862,220,'#888e96');
     drawHp(ctx,20,198,100,8,battle.playerBase/5000,'#70bd4e');drawHp(ctx,780,198,100,8,battle.enemyBase/5000,'#cb5748');
     for(const u of battle.units){
-      ctx.save();const lunge=u.attackAnim>0?(u.side==='ally'?1:-1)*Math.sin((u.attackAnim/.28)*Math.PI)*9:0;
-      const bob=Math.sin(u.walkPhase)*2.2,x=u.x+lunge,y=u.y+bob;
-      if(u.flash>0)ctx.globalAlpha=.52;
-      const src=u.char.image||(u.side==='ally'?window.CAT_MEDIA.cat:window.CAT_MEDIA.enemy);
-      if(!imageCache[src]){imageCache[src]=new Image();imageCache[src].src=src;}
-      const im=imageCache[src],ww=64,hh=64;
-      if(im.complete&&im.naturalWidth){if(u.side==='enemy'){ctx.translate(x,y-35);ctx.scale(-1,1);ctx.drawImage(im,-ww/2,-hh/2,ww,hh);}else ctx.drawImage(im,x-ww/2,y-hh,ww,hh);}
-      else{ctx.fillStyle=u.side==='ally'?'#e8a849':'#9a5966';ctx.beginPath();ctx.arc(x,y-30,19,0,Math.PI*2);ctx.fill();}
-      ctx.globalAlpha=1;drawHp(ctx,x-27,y-68,54,5,u.hp/u.maxHp,u.side==='ally'?'#74bb4c':'#dc574c');
-      if(u.attackAnim>0){ctx.strokeStyle=u.side==='ally'?'#fff0a2':'#ffaaaa';ctx.lineWidth=4;ctx.beginPath();ctx.arc(x+(u.side==='ally'?22:-22),y-38,14+(0.28-u.attackAnim)*30,-1.1,1.1);ctx.stroke();}
+      ctx.save();
+      const attacking=u.attackAnim>0;
+      const lunge=attacking?(u.side==='ally'?1:-1)*Math.sin((u.attackAnim/u.attackAnimDuration)*Math.PI)*10:0;
+      const bob=u.moving?Math.sin(u.walkPhase)*3.2:Math.sin(u.walkPhase*.35)*.8;
+      const x=u.x+lunge,y=u.y+bob;
+      const frames=attacking?(u.char.attackFrames||[]):(u.char.walkFrames||[]);
+      const frameIndex=frames.length
+        ?(attacking?Math.min(frames.length-1,Math.floor((1-u.attackAnim/u.attackAnimDuration)*frames.length)):
+          Math.floor(u.walkPhase/0.72)%frames.length)
+        :-1;
+      const src=(frameIndex>=0?frames[frameIndex]:null)||u.char.image||(u.side==='ally'?window.CAT_MEDIA.cat:window.CAT_MEDIA.enemy);
+      const im=getBattleImage(src),ww=68,hh=68;
+      ctx.globalAlpha=u.flash>0?.58:1;
+      ctx.fillStyle='#26321c55';ctx.beginPath();ctx.ellipse(x,y-4,23,6,0,0,Math.PI*2);ctx.fill();
+      if(im&&im.complete&&im.naturalWidth){
+        ctx.translate(x,y-33);if(u.side==='enemy')ctx.scale(-1,1);
+        ctx.drawImage(im,-ww/2,-hh/2,ww,hh);
+      }else{
+        ctx.fillStyle=u.side==='ally'?'#e8a849':'#9a5966';ctx.beginPath();ctx.arc(x,y-30,19,0,Math.PI*2);ctx.fill();
+      }
+      ctx.globalAlpha=1;
+      drawHp(ctx,x-28,y-73,56,5,u.hp/u.maxHp,u.side==='ally'?'#74bb4c':'#dc574c');
+      if(attacking){
+        ctx.strokeStyle=u.side==='ally'?'#fff0a2':'#ffaaaa';ctx.lineWidth=4;ctx.beginPath();
+        ctx.arc(x+(u.side==='ally'?25:-25),y-38,15+(1-u.attackAnim/u.attackAnimDuration)*30,-1.15,1.15);ctx.stroke();
+      }
+      if(u.stopped>0){ctx.fillStyle='#70d9ee';ctx.font='bold 12px sans-serif';ctx.fillText('停止',x-12,y-80);}
+      if(u.weak>0){ctx.fillStyle='#b99be9';ctx.font='bold 12px sans-serif';ctx.fillText('弱体',x-12,y-80);}
       ctx.restore();
     }
-    for(const e of battle.effects){const alpha=Math.max(0,e.life/(e.max||.5));ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle=e.color||'#fff';ctx.fillStyle=e.color||'#fff';
-      if(e.kind==='wave'||e.kind==='base'){ctx.lineWidth=e.kind==='wave'?7:5;ctx.beginPath();ctx.arc(e.x,e.y||250,18+(1-alpha)*80,0,Math.PI*2);ctx.stroke();}
-      else if(e.kind==='hit'){ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(e.x-16,e.y-5);ctx.lineTo(e.x+16,e.y+5);ctx.moveTo(e.x+4,e.y-19);ctx.lineTo(e.x-4,e.y+19);ctx.stroke();ctx.font='bold 16px sans-serif';ctx.fillText('-'+e.damage,e.x+12,e.y-18);}
+    for(const e of battle.effects){
+      const alpha=Math.max(0,e.life/(e.max||.5));ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle=e.color||'#fff';ctx.fillStyle=e.color||'#fff';
+      if(e.kind==='wave'||e.kind==='base'||e.kind==='knockback'){
+        ctx.lineWidth=e.kind==='wave'?7:5;ctx.beginPath();ctx.arc(e.x,e.y||250,18+(1-alpha)*80,0,Math.PI*2);ctx.stroke();
+      } else if(e.kind==='hit'){
+        ctx.lineWidth=e.critical?5:3;ctx.beginPath();ctx.moveTo(e.x-16,e.y-5);ctx.lineTo(e.x+16,e.y+5);ctx.moveTo(e.x+4,e.y-19);ctx.lineTo(e.x-4,e.y+19);ctx.stroke();
+        ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.fillText((e.critical?'CRITICAL ':'-')+e.damage,e.x,e.y-18);
+      }
       ctx.restore();
     }
   };
@@ -354,21 +487,40 @@
     refreshProfile();$('resultReturn').onclick=()=>{if($('bgm'))$('bgm').pause();showPage('stages');};
   };
 
+  async function applyLegacyToOpenApp() {
+    if(!LEGACY_DATA || !profile || !config || !role)return;
+    mergeLegacyIntoConfig();
+    profile.forms=profile.forms||{};
+    profile.enemyBook=Array.isArray(profile.enemyBook)?profile.enemyBook:[];
+    if(role==='player'&&!profile.enemyBook.length){
+      profile.enemyBook=[...(LEGACY_DATA.initialEnemyBook||[])];
+      await persistProfile();
+    }
+    if(!config.stages.some(stage=>stage.id===selectedStageId))
+      selectedStageId=config.stages.find(stage=>stage.id!=='stage-1')?.id||config.stages[0]?.id||null;
+    renderAll();
+    if(role==='admin')renderAdmin();
+  }
+
   async function ready() {
     ensureExtraPages();
-    try { LEGACY_DATA = await waitLegacy; }
-    catch (e) { console.error('CAT legacy data:',e); return; }
+    // Wrap enterApp immediately, before waiting for the roster, so login cannot race the data load.
     const oldEnterApp=enterApp;
     enterApp=async function(){
       await oldEnterApp();
-      if(!$id('app')||$id('app').classList.contains('hidden'))return;
-      mergeLegacyIntoConfig();
-      profile.forms=profile.forms||{};
-      profile.enemyBook=Array.isArray(profile.enemyBook)?profile.enemyBook:[];
-      if(role==='player'&&!profile.enemyBook.length){profile.enemyBook=[...(LEGACY_DATA.initialEnemyBook||[])];await persistProfile();}
-      selectedStageId=config.stages[0]?.id||null;
-      renderAll();if(role==='admin')renderAdmin();
+      try { LEGACY_DATA=LEGACY_DATA||await waitLegacy; }
+      catch(e){ console.error('CAT legacy data:',e); return; }
+      if(!$id('app')||!$id('app').classList.contains('hidden'))await applyLegacyToOpenApp();
     };
+    try {
+      LEGACY_DATA=await waitLegacy;
+      // If the user already logged in before the asset finished loading, apply it now.
+      if(role&&profile&&config&&$id('app')&&!$id('app').classList.contains('hidden'))
+        await applyLegacyToOpenApp();
+    } catch(e) {
+      console.error('CAT legacy data:',e);
+      toast('元のキャラクター・ステージデータを読み込めませんでした');
+    }
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ready,{once:true});else ready();
 })();
