@@ -951,7 +951,7 @@ export default {
     }
 
     // Scratchゲーム本体はログイン後にiframeで読み込む。トップページindex.htmlは差し替えない。
-if (request.method === "GET" && url.pathname === "/CAT大戦争_完全版_1ファイル軽量版.html") {
+if (request.method === "GET" && decodeURIComponent(url.pathname) === "/CAT大戦争_完全版_1ファイル軽量版.html") {
   const gameResponse = await env.ASSETS.fetch(request);
   if (!gameResponse.ok) return gameResponse;
   let html = await gameResponse.text();
@@ -959,7 +959,7 @@ if (request.method === "GET" && url.pathname === "/CAT大戦争_完全版_1フ�
   if (!html.includes("cat-hide-scratch-controls")) html = html.replace("</head>", '<style id="cat-hide-scratch-controls">' + controlStyle + "</style></head>");
   const readyMarker = "loadingScreen.hidden = true;";
   if (!html.includes(readyMarker)) return new Response("元ゲームの読み込み完了位置を確認できませんでした。", { status: 500 });
-  html = html.replace(readyMarker, readyMarker + "\\n      window.CAT_SCRATCH_READY = true;");
+  html = html.replace(readyMarker, readyMarker + " window.CAT_SCRATCH_READY = true;");
   const headers = new Headers(gameResponse.headers);
   headers.delete("content-length"); headers.delete("content-encoding"); headers.delete("etag");
   headers.set("Cache-Control", "no-store");
