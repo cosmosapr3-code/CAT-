@@ -845,10 +845,14 @@ async function handleApi(request, env) {
     if (auth.session.role !== "player") return json({ error: "プレイヤーでログインしてください。" }, 403);
     const body = await request.json().catch(() => ({}));
     const config = await loadConfig(env, request);
-    const stage = (config.stages || []).find(item => item.id === body.stageId || (body.legacyCode && String(item.legacyCode || "") === String(body.legacyCode)));
+    let stage = (config.stages || []).find(item => item.id === body.stageId || (body.legacyCode && String(item.legacyCode || "") === String(body.legacyCode)));
+    const norm = value => String(value || "").normalize("NFKC").trim().toLowerCase();
+    const reportedStageName = String(body.stageName || "").trim();
+    if (!stage && norm(reportedStageName) === norm(FIXED_TERRA_MISSION.stageName)) {
+      stage = { id: "external-stage-terra-card", name: FIXED_TERRA_MISSION.stageName, legacyCode: FIXED_TERRA_MISSION.stageName };
+    }
     if (!stage) return json({ error: "対象ステージが見つかりません。" }, 404);
     const missions = await loadMissions(env, request);
-    const norm = value => String(value || "").normalize("NFKC").trim().toLowerCase();
     const stageAliases = [stage.name, stage.legacyCode, stage.id].filter(Boolean).map(norm);
     const eligible = missions.filter(m => {
       if (m.type !== "stage_win") return false;
