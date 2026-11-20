@@ -139,8 +139,8 @@ def main():
     abilities=get_list(stage,"味方　能力"); reductions=get_list(stage,"キャラ別軽減ダメージ数")
     attack_modes=get_list(stage,"▽味方キャラ　範囲OR単体")
     evolution_map={"n":["n","v","5"],"t":["t","c","4"],"p":["p","pp","ppp"],
-      "m":["m","w","rm"],"a":["a","s","q"],"b":["b","b","@"],
-      "kbi":["kbi","ku","ku"],"e":["e","nh","nh"]}
+      "m":["m","w","rm"],"a":["a","s","q"],"b":["b","@"],
+      "kbi":["kbi","ku"],"e":["e","nh"]}
     evo_order=get_list(targets["レベル"],"pawa-相手")
     evo_flags=get_list(stage,"進化あり？")
     evolvable={code for i,code in enumerate(evo_order) if i<len(evo_flags) and str(evo_flags[i])=="1"}
