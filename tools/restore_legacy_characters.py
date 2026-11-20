@@ -63,6 +63,37 @@ def data_uri(archive, targets, sprite_name, costume_name, size=(64,64), quality=
     if cache is not None: cache[key] = result
     return result
 
+def animation_frames(archive, targets, sprite_names, code, size=(88,88), quality=60, cache=None, limit=14):
+    """Return the original costume sequence for a unit, ordered by its numeric suffix."""
+    for sprite_name in sprite_names:
+        target = targets.get(sprite_name)
+        if not target:
+            continue
+        found = []
+        for costume in target.get("costumes", []):
+            name = str(costume.get("name", ""))
+            match = re.fullmatch(re.escape(str(code)) + r"(\\d*)", name)
+            if match:
+                found.append((int(match.group(1) or 1), name))
+        found.sort(key=lambda item: item[0])
+        if len(found) >= 2:
+            frames = [data_uri(archive, targets, sprite_name, name, size, quality, cache)
+                      for _, name in found[:limit]]
+            frames = [frame for frame in frames if frame]
+            if len(frames) >= 2:
+                return frames
+    return []
+
+
+def split_animation(frames, fallback):
+    frames = frames or [fallback]
+    # The early costumes are generally the movement loop; later costumes hold attack poses.
+    split = max(2, min(len(frames)-1, round(len(frames)*0.62))) if len(frames) >= 3 else len(frames)
+    walk = frames[:split]
+    attack = frames[split:] if len(frames) > split else frames[-1:]
+    return walk, attack
+
+
 def image_data(archive, targets, sprite_name, costume_name, width=720, max_height=190):
     target = targets[sprite_name]
     costume = next((c for c in target.get("costumes",[]) if c["name"] == str(costume_name)), None)
@@ -99,6 +130,7 @@ def main():
     speed=numbers(get_list(stage,"idousokudo")); reach=numbers(get_list(stage,"syatei mikata"))
     akb=numbers(get_list(stage,"△味方KB")); interval=numbers(get_list(stage,"攻撃間隔"))
     abilities=get_list(stage,"味方　能力"); reductions=get_list(stage,"キャラ別軽減ダメージ数")
+    attack_modes=get_list(stage,"▽味方キャラ　範囲OR単体")
     evolution_map={"n":["n","v","5"],"t":["t","c","4"],"p":["p","pp","ppp"],
       "m":["m","w","rm"],"a":["a","s","q"],"b":["b","b","@"],
       "kbi":["kbi","ku","ku"],"e":["e","nh","nh"]}
@@ -112,8 +144,14 @@ def main():
         for level,form_code in enumerate(evolution_map.get(code,[code]),1):
             img=data_uri(archive,targets,"編成表",form_code,(64,64),64,cache)
             if img:
+                form_frames=animation_frames(archive,targets,["mikata","mikata2"],form_code,(88,88),60,cache)
+                form_walk,form_attack=split_animation(form_frames,img)
                 forms.append({"id":ally_id(form_code),"level":level,"legacyCode":form_code,"image":img,
+                  "walkFrames":form_walk,"attackFrames":form_attack,
                   "name":["第一形態","第二形態","第三形態"][level-1]})
+        ally_image=data_uri(archive,targets,"編成表",code,(64,64),64,cache) or data_uri(archive,targets,"mikata",code,(64,64),64,cache)
+        ally_frames=animation_frames(archive,targets,["mikata","mikata2"],code,(88,88),60,cache)
+        ally_walk,ally_attack=split_animation(ally_frames,ally_image)
         chars.append({
           "id":ally_id(code),"name":f"味方 {code}","legacyCode":code,"side":"ally",
           "hp":max(1,round(ahp[i])) if i<len(ahp) else 1000,
@@ -125,9 +163,11 @@ def main():
           "reproduction":max(3,5+(i%7)*2),
           "rarity":["normal","rare","superRare","uberRare"][min(3,i*4//max(1,len(allies)))],
           "attributes":["旧ゲーム引継ぎ"],"abilities":[],
+          "attackMode":"area" if i<len(attack_modes) and str(attack_modes[i])=="h" else "single",
+          "walkFrames":ally_walk,"attackFrames":ally_attack,
           "legacyAbilityCode":str(abilities[i]) if i<len(abilities) else "",
           "damageReduction":str(reductions[i]) if i<len(reductions) else "",
-          "image":data_uri(archive,targets,"編成表",code,(64,64),64,cache) or data_uri(archive,targets,"mikata",code,(64,64),64,cache),
+          "image":ally_image,
           "description":f"元のScratch版から引き継いだ味方キャラクター（ID: {code}）",
           "inGacha":not bool(child),"evolutionAvailable":code in evolvable and code in evolution_map,
           "forms":forms,"evolutionOf":child
@@ -146,12 +186,15 @@ def main():
         else:
             source="Pico"; j=pi.get(code,i-48); hp=php[j] if j<len(php) else 1000; kb=pkb[j] if j<len(pkb) else 2
         uid="enemy-pico" if i==0 else ("enemy-brute" if i==1 else f"enemy-{slug_code(code)}-{i+1}")
+        enemy_frames=animation_frames(archive,targets,[source],code,(88,88),60,cache)
+        enemy_walk,enemy_attack=split_animation(enemy_frames,data_uri(archive,targets,source,code,(64,64),64,cache))
         enemies_out.append({
           "id":uid,"name":f"敵 {code}","legacyCode":code,"side":"enemy",
           "hp":max(1,round(hp)),"attack":max(1,round(atk_by.get(code,100))),
           "kb":max(0,round(kb)),"range":100,"speed":18,"cost":0,"cooldown":3,
           "reward":max(5,round(cash[i])) if i<len(cash) else 30,
-          "rarity":"normal","attributes":["旧ゲーム引継ぎ"],"abilities":[],"legacySource":source,
+          "rarity":"normal","attributes":["旧ゲーム引継ぎ"],"abilities":[],"attackMode":"area",
+          "walkFrames":enemy_walk,"attackFrames":enemy_attack,"legacySource":source,
           "image":data_uri(archive,targets,source,code,(64,64),64,cache),
           "encyclopediaImage":image_data(archive,targets,"図鑑",str(i),680,190),
           "description":f"元のScratch版から引き継いだ敵キャラクター（ID: {code}）","inGacha":False
