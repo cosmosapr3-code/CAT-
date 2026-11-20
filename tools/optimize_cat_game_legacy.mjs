@@ -9,7 +9,7 @@ const alphabet = Array.from({length:85},(_,i)=>i===18?"(":i===20?")":String.from
 const reverse = new Map(alphabet.map((c,i)=>[c.charCodeAt(0),i]));
 
 function decode85(input) {
-  const s = input.replace(/\\s+/g,"");
+  const s = input.replace(/\s+/g,"");
   if (s.length % 5) throw new Error("Base85 length is invalid");
   const out = Buffer.allocUnsafe(s.length / 5 * 4);
   let at = 0;
@@ -42,8 +42,8 @@ function encode85(input) {
 }
 
 function extractArchive(html) {
-  const payload = html.match(/<script\\s+type="application\\/x-b85"\\s+id="pl">([\\s\\S]*?)<\\/script>/i);
-  const size = html.match(/window\\.__PROJECT_ZIP\\s*=\\s*\\(\\)\\s*=>\\s*__inflate\\(plBuf\\.subarray\\(0,\\s*(\\d+)\\)\\)/);
+  const payload = html.match(/<script\s+type="application\/x-b85"\s+id="pl">([\s\S]*?)<\/script>/i);
+  const size = html.match(/window\.__PROJECT_ZIP\s*=\s*\(\)\s*=>\s*__inflate\(plBuf\.subarray\(0,\s*(\d+)\)\)/);
   if (!payload || !size) throw new Error("元HTMLのBase85プロジェクトデータが見つかりません");
   const compressed = decode85(payload[1]).subarray(0, Number(size[1]));
   const zip = inflateRawSync(compressed);
@@ -201,19 +201,19 @@ async function main() {
   }
 
   const encoded = encode85(outer);
-  const openingTag = html.match(/(<script\\s+type="application\\/x-b85"\\s+id="pl">)/i)?.[1];
+  const openingTag = html.match(/(<script\s+type="application\/x-b85"\s+id="pl">)/i)?.[1];
   if (!openingTag) throw new Error("Base85開始タグを特定できません");
   const nextPayload = openingTag + encoded + "</script>";
   let next = html.replace(extracted.payload, nextPayload);
 
-  const sizeRegex = /(window\\.__PROJECT_ZIP\\s*=\\s*\\(\\)\\s*=>\\s*__inflate\\(plBuf\\.subarray\\(0,\\s*)\\d+(\\)\\))/;
+  const sizeRegex = /(window\.__PROJECT_ZIP\s*=\s*\(\)\s*=>\s*__inflate\(plBuf\.subarray\(0,\s*)\d+(\)\))/;
   if (!sizeRegex.test(next)) throw new Error("埋め込みZIPサイズの更新位置がありません");
   next = next.replace(sizeRegex, `$1${outer.length}$2`);
 
   const cacheKey = crypto.createHash("sha256").update(optimized.buffer).digest("hex").slice(0,12);
   const indexPath = "index.html";
   let index = await fs.readFile(indexPath, "utf8");
-  const urlRegex = /new URL\\('CAT大戦争_完全版_1ファイル軽量版\\.html(?:\\?v=[^']*)?',window\\.location\\.href\\)/;
+  const urlRegex = /new URL\('CAT大戦争_完全版_1ファイル軽量版\.html(?:\?v=[^']*)?',window\.location\.href\)/;
   if (!urlRegex.test(index)) throw new Error("index.html のゲームURLを特定できません");
   index = index.replace(urlRegex,
     `new URL('CAT大戦争_完全版_1ファイル軽量版.html?v=${cacheKey}',window.location.href)`);
