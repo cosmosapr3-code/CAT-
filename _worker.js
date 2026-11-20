@@ -853,7 +853,7 @@ async function handleApi(request, env) {
     const config = await loadConfig(env, request);
     let stage = (config.stages || []).find(item => item.id === body.stageId || (body.legacyCode && String(item.legacyCode || "") === String(body.legacyCode)));
     const norm = value => String(value || "").normalize("NFKC").trim().toLowerCase();
-    const reportedStageName = String(body.stageName || "").trim();
+    const reportedStageName = String(body.stageName || (String(body.legacyCode || "").normalize("NFKC").trim().toLowerCase() === norm(FIXED_TERRA_MISSION.stageName) ? body.legacyCode : "")).trim();
     if (!stage && norm(reportedStageName) === norm(FIXED_TERRA_MISSION.stageName)) {
       stage = { id: "external-stage-terra-card", name: FIXED_TERRA_MISSION.stageName, legacyCode: FIXED_TERRA_MISSION.stageName };
     }
