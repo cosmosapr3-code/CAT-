@@ -672,7 +672,7 @@ async function handleApi(request, env) {
     // a guessed username must not be enough to consume a one-time reward.
     let terraSession;
     try {
-      const verifyResponse = await fetch("https://terracard-api.cosmosapr3.workers.dev/me", {
+      const verifyResponse = await fetch("https://terracard-api.cosmos-apr-3.workers.dev/me", {
         method: "GET", redirect: "error", cache: "no-store",
         headers: { "Authorization": "Bearer " + terraToken }
       });
