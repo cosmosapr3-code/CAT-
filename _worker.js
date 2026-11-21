@@ -292,12 +292,17 @@ function mergeCharacterRoster(legacyCharacters, savedCharacters) {
   return [...merged.values()];
 }
 
+const TERRA_STAGE_ID = "stage-terra-card";
+function defaultTerraStage() {
+  return { id: TERRA_STAGE_ID, name: "TERRA CARD", series: "運営ステージ", chapter: "運営ステージ",
+    description: "敵キャラクターと倍率を運営が設定するステージ", multiplier: 1, rewardXp: 0, rewardChuru: 0, music: "", enemyWaves: [] };
+}
 async function loadConfig(env, request) {
   const legacyData=await loadLegacyGameData(env,request);
   const legacyCharacters=Array.isArray(legacyData?.characters)?legacyData.characters:null;
   const baseConfig={...structuredClone(DEFAULT_CONFIG),
     characters:legacyCharacters||DEFAULT_CONFIG.characters,
-    stages:Array.isArray(legacyData?.stages)&&legacyData.stages.length?legacyData.stages:DEFAULT_CONFIG.stages};
+    stages:[...(Array.isArray(legacyData?.stages)&&legacyData.stages.length?legacyData.stages:DEFAULT_CONFIG.stages),defaultTerraStage()]};
   const row=await getDb(env).prepare("SELECT value_json FROM game_config WHERE config_key = 'main'").first();
   if(!row?.value_json)return baseConfig;
   try {
@@ -395,7 +400,8 @@ const EXTERNAL_REWARD_CATALOG = [{
 }];
 const FIXED_TERRA_MISSION = {
   id: "fixed-win-terra-card", title: "TERRA CARDに勝利",
-  description: "ステージ「TERRA CARD」をクリアする", type: "stage_win", stageName: "TERRA CARD", fixed: true,
+  description: "運営設定ステージ「TERRA CARD」をクリアする", type: "stage_win",
+  stageId: TERRA_STAGE_ID, stageName: "TERRA CARD", fixed: true,
   rewards: { xp: 0, catChuru: 0, characterIds: [], externalRewardIds: ["external-reward-cat-kanzen"], stageIds: [] }
 };
 function boundedInt(value, max = 1000000000) { return Math.max(0, Math.min(max, Math.floor(Number(value) || 0))); }
@@ -826,8 +832,43 @@ async function handleApi(request, env) {
     const config = await loadConfig(env, request);
     return json({
       characters: (config.characters || []).filter(c => c.side === "ally").map(c => ({ id: c.id, name: c.name })),
+      enemies: (config.characters || []).filter(c => c.side === "enemy").map(c => ({ id: c.id, name: c.name })),
       stages: (config.stages || []).map(stage => ({ id: stage.id, name: stage.name, legacyCode: stage.legacyCode || "", series: stage.series || stage.chapter || "" }))
     });
+  }
+
+  // TERRA CARD is a new CAT stage. Operators set its enemy roster and stage multiplier.
+  if (path === "/api/admin/terra-stage" && method === "GET") {
+    const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
+    const config = await loadConfig(env, request);
+    const stage = (config.stages || []).find(item => item.id === TERRA_STAGE_ID) || defaultTerraStage();
+    return json({ stage, selectedEnemyIds: (stage.enemyWaves || []).map(w => w.characterId).filter(Boolean) });
+  }
+  if (path === "/api/admin/terra-stage" && method === "PUT") {
+    const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
+    const body = await request.json().catch(() => ({}));
+    const config = await loadConfig(env, request);
+    const multiplier = Number(body.multiplier);
+    if (!Number.isFinite(multiplier) || multiplier < 0.1 || multiplier > 100) return json({ error: "倍率は0.1〜100の範囲で指定してください。" }, 400);
+    const available = new Set((config.characters || []).filter(c => c.side === "enemy").map(c => c.id));
+    const enemyIds = safeStringIds(body.enemyIds, 10).filter(id => available.has(id));
+    if (!enemyIds.length) return json({ error: "敵キャラクターを1体以上選んでください。" }, 400);
+    const previous = (config.stages || []).find(item => item.id === TERRA_STAGE_ID) || defaultTerraStage();
+    const stage = { ...previous, id: TERRA_STAGE_ID, name: "TERRA CARD", series: "運営ステージ", chapter: "運営ステージ",
+      description: "運営が設定した敵キャラクターと倍率で戦うステージ", multiplier,
+      enemyWaves: enemyIds.map((characterId, index) => ({ characterId, at: 4 + index * 12, interval: 18, count: 1, hpMultiplier: 1, attackMultiplier: 1 })) };
+    const next = { ...config, stages: [...(config.stages || []).filter(item => item.id !== TERRA_STAGE_ID), stage] };
+    const configToSave = structuredClone(next);
+    for (const character of (configToSave.characters || [])) {
+      if (typeof character.image === "string" && character.image.startsWith("data:image/")) delete character.image;
+      delete character.encyclopediaImage; delete character.walkFrames; delete character.attackFrames;
+      if (Array.isArray(character.forms)) character.forms = character.forms.map(form => { const copy = { ...form }; if (typeof copy.image === "string" && copy.image.startsWith("data:image/")) delete copy.image; delete copy.walkFrames; delete copy.attackFrames; return copy; });
+    }
+    for (const item of (configToSave.stages || [])) if (typeof item.titleImage === "string" && item.titleImage.startsWith("data:image/")) delete item.titleImage;
+    const encoded = JSON.stringify(configToSave);
+    if (encoded.length > 900000) return json({ error: "設定データが大きすぎます。" }, 413);
+    await getDb(env).prepare("INSERT INTO game_config (config_key, value_json, updated_at) VALUES ('main', ?, ?) ON CONFLICT(config_key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at").bind(encoded, nowSeconds()).run();
+    return json({ ok: true, stage, selectedEnemyIds: enemyIds });
   }
 
   // Admin mission editor; the fixed TERRA CARD mission is always retained.
