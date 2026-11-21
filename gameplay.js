@@ -192,7 +192,7 @@
 
   function renderLegacyStages() {
     const groups = new Map();
-    for (const stage of (config.stages || [])) {
+    for (const stage of (config.stages || []).filter(item => item.id !== "stage-terra-card" || item.configured === true)) {
       const key = stage.series || stage.chapter || 'その他';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(stage);
