@@ -303,16 +303,34 @@ async function loadConfig(env, request) {
   const baseConfig={...structuredClone(DEFAULT_CONFIG),
     characters:legacyCharacters||DEFAULT_CONFIG.characters,
     stages:[...(Array.isArray(legacyData?.stages)&&legacyData.stages.length?legacyData.stages:DEFAULT_CONFIG.stages),defaultTerraStage()]};
-  const row=await getDb(env).prepare("SELECT value_json FROM game_config WHERE config_key = 'main'").first();
-  if(!row?.value_json)return baseConfig;
-  try {
-    const saved=JSON.parse(row.value_json);
-    return {...baseConfig,...saved,
-      economy:{...DEFAULT_CONFIG.economy,...(saved.economy||{})},
-      gachaRates:{...DEFAULT_CONFIG.gachaRates,...(saved.gachaRates||{})},
-      characters:mergeCharacterRoster(legacyCharacters,saved.characters),
-      stages:mergeLegacyStages(baseConfig.stages,saved.stages)};
-  } catch { return baseConfig; }
+  const db=getDb(env);
+  const row=await db.prepare("SELECT value_json FROM game_config WHERE config_key = 'main'").first();
+  let config=baseConfig;
+  if(row?.value_json) {
+    try {
+      const saved=JSON.parse(row.value_json);
+      config={...baseConfig,...saved,
+        economy:{...DEFAULT_CONFIG.economy,...(saved.economy||{})},
+        gachaRates:{...DEFAULT_CONFIG.gachaRates,...(saved.gachaRates||{})},
+        characters:mergeCharacterRoster(legacyCharacters,saved.characters),
+        stages:mergeLegacyStages(baseConfig.stages,saved.stages)};
+    } catch { config=baseConfig; }
+  }
+
+  // 運営が登録した正式名は元のScratchデータより優先する。
+  const namesRow=await db.prepare("SELECT value_json FROM game_config WHERE config_key = 'character_names'").first();
+  if(namesRow?.value_json) {
+    try {
+      const names=JSON.parse(namesRow.value_json);
+      if(names&&typeof names==="object"&&!Array.isArray(names)) {
+        config.characters=(config.characters||[]).map(character=>{
+          const name=typeof names[character.id]==="string"?names[character.id].trim():"";
+          return name?{...character,name}:character;
+        });
+      }
+    } catch(error) { console.error("Character name overrides could not be read:",error); }
+  }
+  return config;
 }
 function mergeLegacyStages(legacyStages,savedStages) {
   const map=new Map((Array.isArray(legacyStages)?legacyStages:[]).map(x=>[x.id,x]));
@@ -1045,15 +1063,54 @@ async function handleApi(request, env) {
     }
     return json({ missions, externalRewards: EXTERNAL_REWARD_CATALOG, progress });
   }
-  // Small operator catalog: only names and IDs, never heavy character image data.
+  // Small operator catalog: names and IDs, never heavy character image data.
   if (path === "/api/admin/catalog" && method === "GET") {
     const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
     const config = await loadConfig(env, request);
     return json({
       characters: (config.characters || []).filter(c => c.side === "ally").map(c => ({ id: c.id, name: c.name })),
       enemies: (config.characters || []).filter(c => c.side === "enemy").map(c => ({ id: c.id, name: c.name })),
+      allCharacters: (config.characters || []).map(c => ({ id: c.id, name: c.name, side: c.side, legacyCode: c.legacyCode || "" })),
+      externalRewards: EXTERNAL_REWARD_CATALOG.map(item => ({ id: item.id, name: item.name })),
       stages: (config.stages || []).map(stage => ({ id: stage.id, name: stage.name, legacyCode: stage.legacyCode || "", series: stage.series || stage.chapter || "" }))
     });
+  }
+
+  // 運営がScratch内部コードの代わりに正式表示名を登録する。
+  if (path === "/api/admin/character-names" && method === "PUT") {
+    const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
+    const body = await request.json().catch(() => ({}));
+    if (!Array.isArray(body.names) || body.names.length < 1 || body.names.length > 200) {
+      return json({ error: "名前の更新データが正しくありません。" }, 400);
+    }
+    const config = await loadConfig(env, request);
+    const validIds = new Set((config.characters || []).map(c => c.id));
+    const db = getDb(env);
+    const row = await db.prepare("SELECT value_json FROM game_config WHERE config_key = 'character_names'").first();
+    let names = {};
+    try {
+      const saved = row?.value_json ? JSON.parse(row.value_json) : {};
+      if (saved && typeof saved === "object" && !Array.isArray(saved)) names = { ...saved };
+    } catch {}
+    const updated = [];
+    for (const item of body.names) {
+      if (!item || typeof item.id !== "string" || !validIds.has(item.id) || typeof item.name !== "string") {
+        return json({ error: "登録対象のキャラクターが見つかりません。" }, 400);
+      }
+      const name = item.name.trim();
+      if (name.length > 80) return json({ error: "キャラクター名は80文字以内にしてください。" }, 400);
+      if (name) names[item.id] = name;
+      else delete names[item.id];
+      updated.push(item.id);
+    }
+    const encoded = JSON.stringify(names);
+    await db.prepare(
+      "INSERT INTO game_config (config_key, value_json, updated_at) VALUES ('character_names', ?, ?) ON CONFLICT(config_key) DO UPDATE SET value_json=excluded.value_json, updated_at=excluded.updated_at"
+    ).bind(encoded, nowSeconds()).run();
+    const result = (config.characters || []).filter(c => updated.includes(c.id)).map(c => ({
+      id: c.id, name: names[c.id] || c.name, side: c.side, legacyCode: c.legacyCode || ""
+    }));
+    return json({ ok: true, updated: result });
   }
 
   // TERRA CARD is a new CAT stage. Operators set its enemy roster and stage multiplier.
@@ -1169,18 +1226,45 @@ async function handleApi(request, env) {
     if (typeof body.playerId !== "string" || !body.playerId) return json({ error: "配布先プレイヤーが指定されていません。" }, 400);
     const config = await loadConfig(env, request), db = getDb(env);
     const user = await db.prepare("SELECT id FROM users WHERE id = ?").bind(body.playerId).first();
-    if (!user) return json({ error: "プレイヤーが見つかりません。" }, 404);
-    const data = await readProfileForUser(db, body.playerId, config);
+    if (!user) return json({ error: "プレイヤーが見つかりません。", code: "PLAYER_NOT_FOUND" }, 404);
+
     const xp = boundedInt(body.xp), catChuru = boundedInt(body.catChuru);
     const characterIds = safeStringIds(body.characterIds, 100).filter(id => (config.characters || []).some(c => c.id === id && c.side === "ally"));
     const externalRewardIds = safeStringIds(body.externalRewardIds, 100).filter(id => EXTERNAL_REWARD_CATALOG.some(item => item.id === id));
     const stageIds = safeStringIds(body.stageIds, 300).filter(id => (config.stages || []).some(stage => stage.id === id));
-    data.profile.xp = boundedInt(data.profile.xp + xp); data.profile.catChuru = boundedInt(data.profile.catChuru + catChuru);
-    for (const id of characterIds) { if (!data.profile.owned.includes(id)) data.profile.owned.push(id); data.profile.levels[id] = Math.max(1, Number(data.profile.levels[id] || 1)); }
-    for (const id of externalRewardIds) if (!data.profile.ownedExternalRewards.includes(id)) data.profile.ownedExternalRewards.push(id);
-    for (const id of stageIds) if (!data.profile.unlockedStages.includes(id)) data.profile.unlockedStages.push(id);
-    await saveProfileForUser(db, body.playerId, data.profile, data.row?.profile_json ?? null);
-    return json({ ok: true, playerId: body.playerId, added: { xp, catChuru, characterIds, externalRewardIds, stageIds }, profile: data.profile });
+    if (!xp && !catChuru && !characterIds.length && !externalRewardIds.length && !stageIds.length) {
+      return json({ error: "配布する経験値・CATチュール・キャラクター・報酬・ステージを1つ以上選んでください。", code: "EMPTY_GRANT" }, 400);
+    }
+
+    let savedProfile = null;
+    // 別の保存と重なった場合は最新プロフィールを読み直して配布を再適用する。
+    for (let attempt = 0; attempt < 4 && !savedProfile; attempt++) {
+      const data = await readProfileForUser(db, body.playerId, config);
+      const next = structuredClone(data.profile);
+      next.xp = boundedInt(next.xp + xp);
+      next.catChuru = boundedInt(next.catChuru + catChuru);
+      for (const id of characterIds) {
+        if (!next.owned.includes(id)) next.owned.push(id);
+        next.levels[id] = Math.max(1, Number(next.levels[id] || 1));
+      }
+      for (const id of externalRewardIds) if (!next.ownedExternalRewards.includes(id)) next.ownedExternalRewards.push(id);
+      for (const id of stageIds) if (!next.unlockedStages.includes(id)) next.unlockedStages.push(id);
+      try {
+        await saveProfileForUser(db, body.playerId, next, data.row?.profile_json ?? null);
+        savedProfile = next;
+      } catch (error) {
+        if (!String(error?.message || error).includes("同時に更新") || attempt === 3) {
+          console.error("Admin grant save failed:", error);
+          return json({ error: "配布データを保存できませんでした。もう一度お試しください。", code: "GRANT_SAVE_FAILED" }, 409);
+        }
+      }
+    }
+    if (!savedProfile) return json({ error: "配布データを保存できませんでした。もう一度お試しください。", code: "GRANT_SAVE_FAILED" }, 409);
+    return json({
+      ok: true, playerId: body.playerId,
+      added: { xp, catChuru, characterIds, externalRewardIds, stageIds },
+      profile: savedProfile
+    });
   }
 
   // ガチャ
