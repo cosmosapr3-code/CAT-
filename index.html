@@ -45,6 +45,15 @@
 .cat-tools-mission{padding:11px;margin:8px 0;border-radius:10px;background:#292929;border:1px solid #555}
 .cat-tools-mission.done{border-color:#63a66b;background:#1e2b20}
 .cat-tools-error{color:#ff9d8e;white-space:pre-wrap;margin:8px 0;font-size:12px}
+#cat-user-homebar{position:fixed;z-index:2147481000;top:12px;left:12px;max-width:min(70vw,420px);padding:8px 13px;border:1px solid #c99b42;border-radius:12px;background:#171717eF;color:#ffe6b2;font-size:13px;font-weight:800;box-shadow:0 4px 18px #0008;pointer-events:none}
+#cat-user-homebar[hidden],#cat-start-gate[hidden]{display:none!important}
+#cat-user-homebar small{display:block;margin-top:2px;color:#b9ab90;font-size:10px;font-weight:600}
+#cat-start-gate{position:fixed;z-index:2147482500;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;background:#050505d9;color:white}
+#cat-start-card{width:min(420px,100%);padding:24px;border:2px solid #c99b42;border-radius:18px;background:linear-gradient(160deg,#333,#171717);text-align:center;box-shadow:0 18px 60px #000b}
+#cat-start-card h2{margin:0 0 8px;color:#ffe09a}
+#cat-start-card p{color:#c9c0b0;font-size:13px;line-height:1.5}
+#cat-start-button{width:100%;margin-top:10px;border:0;border-radius:12px;padding:15px;background:linear-gradient(#f5d58c,#bd842c);color:#271a08;font-size:17px;font-weight:900;cursor:pointer}
+#cat-start-error{min-height:18px;margin-top:9px;color:#ff9d8e;font-size:12px;white-space:pre-wrap}
 @media(max-width:600px){#cat-tools-panel{inset:1vh 1vw;padding:12px}#cat-tools-head{top:-12px}#cat-tools-head h2{font-size:18px}}
 </style>
 </head>
@@ -69,6 +78,8 @@
 </div>
 <div id="cat-game-loading">CAT大戦争を読み込み中…</div>
 <iframe id="cat-game" title="CAT大戦争" allow="fullscreen; autoplay; gamepad; clipboard-read; clipboard-write"></iframe>
+<div id="cat-user-homebar" hidden><span>ユーザー名：</span><strong id="cat-user-name"></strong><small id="cat-user-role"></small></div>
+<div id="cat-start-gate" hidden><div id="cat-start-card"><h2>ゲームの準備ができました</h2><p>ログインしました。下のボタンを押すとCAT大戦争が始まります。</p><button id="cat-start-button" type="button">ゲームを開始</button><div id="cat-start-error"></div></div></div>
 <button id="cat-tools-launcher" type="button" hidden>🎯 ミッション / 運営パネル</button>
 <div id="cat-tools-panel" hidden>
   <div id="cat-tools-head"><h2 id="cat-tools-title">ミッション</h2><button id="cat-tools-close" type="button">閉じる</button></div>
@@ -107,6 +118,7 @@
   const form=$('cat-auth-form'),username=$('cat-auth-username'),password=$('cat-auth-password');
   const submit=$('cat-auth-submit'),toggle=$('cat-auth-toggle'),error=$('cat-auth-error');
   const playerMode=$('cat-player-mode'),adminMode=$('cat-admin-mode');
+  const userHomebar=$('cat-user-homebar'),startGate=$('cat-start-gate'),startButton=$('cat-start-button'),startError=$('cat-start-error');
   let mode='player',registering=false,started=false,auth=null,bootTimer=null,bootPoll=null;
 
   const toolsLauncher=$('cat-tools-launcher'),toolsPanel=$('cat-tools-panel'),toolsTitle=$('cat-tools-title'),toolsError=$('cat-tools-error');
@@ -154,7 +166,8 @@
   }
   function bootError(message){
     clearInterval(bootPoll);clearTimeout(bootTimer);
-    loading.style.display='none';frame.style.display='none';
+    loading.style.display='none';frame.style.display='none';startGate.hidden=true;userHomebar.hidden=true;toolsLauncher.hidden=true;
+    started=false;auth=null;window.CAT_AUTH=null;frame.src='about:blank';
     gate.hidden=false;error.textContent=message;
   }
   function getScratchStageTarget(w){
@@ -201,23 +214,24 @@
     }catch(e){console.warn('CAT AUTH bridge:',e);}
   }
   function finishGameBoot(w,d){
-    if(w.__CAT_EXTERNAL_STARTED)return true;
+    if(w.__CAT_READY_FOR_START)return true;
     try{
       const launch=d.getElementById('launch');
       if(launch)launch.hidden=true;
       const load=d.getElementById('loading');
       if(load)load.hidden=true;
       passAuthToGame();
-      w.scaffolding.start();
-      applyScratchStageUnlocks(w).catch(err=>console.warn('CAT stage unlock sync failed:',err)).finally(()=>startScratchStageClearWatcher(w));
-      w.__CAT_EXTERNAL_STARTED=true;
+      w.__CAT_READY_FOR_START=true;
       frame.style.display='block';
       loading.style.display='none';
       gate.hidden=true;
+      toolsLauncher.hidden=false;
+      startGate.hidden=false;
+      startError.textContent='';
       clearInterval(bootPoll);clearTimeout(bootTimer);
       return true;
     }catch(e){
-      bootError('ゲームの起動に失敗しました: '+(e&&e.message||e));
+      bootError('ゲームの準備に失敗しました: '+(e&&e.message||e));
       return false;
     }
   }
@@ -230,7 +244,7 @@
         if(!d.getElementById('cat-hide-scratch-controls')){
           const st=d.createElement('style');
           st.id='cat-hide-scratch-controls';
-          st.textContent='#loading,#launch,.control-button,.green-flag-button,.pause-button,.stop-all-button,.fullscreen-button{display:none!important;visibility:hidden!important;pointer-events:none!important}';
+          st.textContent='#loading,#launch,.green-flag-button,.stop-all-button,.fullscreen-button{display:none!important;visibility:hidden!important;pointer-events:none!important}';
           d.head.appendChild(st);
         }
         const load=d.getElementById('loading');
@@ -256,23 +270,37 @@
     started=true;
     frame.src=new URL('CAT大戦争_完全版_1ファイル軽量版.html',window.location.href).href;
   }
-  username.addEventListener('focus',preloadGame,{once:true});
-  password.addEventListener('focus',preloadGame,{once:true});
 
   function enterGame(session){
-    auth={role:session.role==='admin'?'admin':'player',username:String(session.username||'')};
+    auth={role:session.role==='admin'?'admin':'player',username:String(session.username||'').trim()};
+    if(!auth.username)throw new Error('ログイン名を確認できませんでした。もう一度ログインしてください。');
     window.CAT_AUTH=auth;
+    userHomebar.hidden=true;startGate.hidden=true;toolsLauncher.hidden=true;
     gate.hidden=true;
-    toolsLauncher.hidden=false;
-    loading.textContent='CAT大戦争を起動中…';
+    loading.textContent='CAT大戦争を読み込み中…';
     loading.style.display='flex';
-    if(!started){
-      preloadGame();
-    }else{
-      monitorGameBoot();
-    }
+    preloadGame();
     window.dispatchEvent(new CustomEvent('CAT_AUTH_READY',{detail:auth}));
   }
+  startButton.addEventListener('click',()=>{
+    const w=frame.contentWindow;
+    try{
+      if(!w||!w.scaffolding)throw new Error('ゲームの準備がまだ完了していません。再読み込みしてください。');
+      passAuthToGame();
+      if(!w.__CAT_EXTERNAL_STARTED){
+        w.scaffolding.start();
+        w.__CAT_EXTERNAL_STARTED=true;
+        applyScratchStageUnlocks(w).catch(err=>console.warn('CAT stage unlock sync failed:',err)).finally(()=>startScratchStageClearWatcher(w));
+      }
+      w.focus();frame.focus();
+      startGate.hidden=true;
+      $('cat-user-name').textContent=auth.username;
+      $('cat-user-role').textContent=auth.role==='admin'?'運営アカウント':'プレイヤー';
+      userHomebar.hidden=false;
+      window.dispatchEvent(new CustomEvent('CAT_GAME_STARTED',{detail:auth}));
+    }catch(e){startError.textContent='ゲームを開始できませんでした：'+(e&&e.message||e);}
+  });
+
   playerMode.addEventListener('click',()=>setMode('player'));
   adminMode.addEventListener('click',()=>setMode('admin'));
   toggle.addEventListener('click',()=>{registering=!registering;labels();error.textContent='';});
@@ -284,10 +312,11 @@
         ?await api('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
         :await api('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,mode})});
       enterGame({role:result.role||mode,username:result.username||payload.username});
-    }catch(err){error.textContent=err.message||'ログインに失敗しました。';}
+    }catch(err){loading.style.display='none';gate.hidden=false;error.textContent=err.message||'ログインに失敗しました。';}
     finally{submit.disabled=false;}
   });
-  api('/api/me').then(enterGame).catch(()=>{gate.hidden=false;});
+  // セッションCookieだけで勝手に入室させない。必ずログインボタンを押した時だけゲームへ進む。
+  gate.hidden=false;
   labels();
 })();
 </script>
