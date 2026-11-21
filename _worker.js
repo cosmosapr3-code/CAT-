@@ -655,11 +655,12 @@ async function handleApi(request, env) {
       "SELECT payload_json, status FROM terra_reward_claims WHERE claim_token = ?"
     ).bind(token).first();
     if (!row) return json({ error: "受取コードが見つかりません。" }, 404);
-    if (row.status !== "pending") return json({ error: "この報酬はすでに受け取り済みです。" }, 409);
     let payload;
     try { payload = JSON.parse(row.payload_json); }
     catch { return json({ error: "報酬データを読み取れません。" }, 500); }
-    return json({ ok: true, payload });
+    if (row.status === "claimed") return json({ ok: true, payload, alreadyClaimed: true });
+    if (row.status !== "pending") return json({ error: "この報酬は現在受け取れません。" }, 409);
+    return json({ ok: true, payload, alreadyClaimed: false });
   }
 
   if (method === "POST" && path === "/api/terra-reward/ack") {
