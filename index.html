@@ -54,6 +54,8 @@
 #cat-start-card p{color:#c9c0b0;font-size:13px;line-height:1.5}
 #cat-start-button{width:100%;margin-top:10px;border:0;border-radius:12px;padding:15px;background:linear-gradient(#f5d58c,#bd842c);color:#271a08;font-size:17px;font-weight:900;cursor:pointer}
 #cat-start-error{min-height:18px;margin-top:9px;color:#ff9d8e;font-size:12px;white-space:pre-wrap}
+#cat-pending-logout{margin-top:10px;border:1px solid #9c6556;border-radius:9px;padding:9px 14px;background:#49251e;color:#ffe2d8;font-weight:800;cursor:pointer}
+#cat-pending-logout:disabled{opacity:.55;cursor:wait}
 @media(max-width:600px){#cat-tools-panel{inset:1vh 1vw;padding:12px}#cat-tools-head{top:-12px}#cat-tools-head h2{font-size:18px}}
 </style>
 </head>
@@ -79,7 +81,7 @@
 <div id="cat-game-loading">CAT大戦争を読み込み中…</div>
 <iframe id="cat-game" title="CAT大戦争" allow="fullscreen; autoplay; gamepad; clipboard-read; clipboard-write"></iframe>
 <div id="cat-user-homebar" hidden><span>ユーザー名：</span><strong id="cat-user-name"></strong><small id="cat-user-role"></small><button id="cat-logout-button" type="button">ログアウト</button></div>
-<div id="cat-start-gate" hidden><div id="cat-start-card"><h2>ゲームの準備ができました</h2><p>ログインしました。下のボタンを押すとCAT大戦争が始まります。</p><button id="cat-start-button" type="button">ゲームを開始</button><div id="cat-start-error"></div></div></div>
+<div id="cat-start-gate" hidden><div id="cat-start-card"><h2>ゲームの準備ができました</h2><p>ログインしました。下のボタンを押すとCAT大戦争が始まります。</p><button id="cat-start-button" type="button">ゲームを開始</button><div id="cat-start-error"></div><button id="cat-pending-logout" type="button">ログアウトして戻る</button></div></div>
 <button id="cat-tools-launcher" type="button" hidden>🎯 ミッション / 運営パネル</button>
 <div id="cat-tools-panel" hidden>
   <div id="cat-tools-head"><h2 id="cat-tools-title">ミッション</h2><button id="cat-tools-close" type="button">閉じる</button></div>
@@ -159,9 +161,21 @@
     labels();error.textContent='';
   }
   async function api(url,options={}){
-    const res=await fetch(url,{credentials:'same-origin',cache:'no-store',...options});
+    let res;
+    try{
+      res=await fetch(url,{credentials:'same-origin',cache:'no-store',...options});
+    }catch(e){
+      throw new Error('サーバーに接続できません。Cloudflare Worker上のゲームURLから開いてください。');
+    }
+    const type=res.headers.get('content-type')||'';
+    if(!type.includes('application/json')){
+      if(location.hostname.endsWith('github.io')){
+        throw new Error('このページはGitHub Pagesで開かれています。GitHub Pagesではログイン・配布APIが動きません。Cloudflare WorkerのURLから開く必要があります。');
+      }
+      throw new Error('Cloudflare Worker APIが応答していません（HTTP '+res.status+'）。');
+    }
     const data=await res.json().catch(()=>({}));
-    if(!res.ok)throw new Error(data.error||'通信に失敗しました。');
+    if(!res.ok)throw new Error(data.error||'通信に失敗しました（HTTP '+res.status+'）。');
     return data;
   }
   function bootError(message){
@@ -282,16 +296,18 @@
     preloadGame();
     window.dispatchEvent(new CustomEvent('CAT_AUTH_READY',{detail:auth}));
   }
-  const logoutButton=$('cat-logout-button');
-  logoutButton.addEventListener('click',async()=>{
-    if(logoutButton.disabled)return;
-    logoutButton.disabled=true;logoutButton.textContent='ログアウト中…';
-    let serverLogoutOk=false;
+  const logoutButton=$('cat-logout-button'),pendingLogoutButton=$('cat-pending-logout');
+  async function performLogout(){
+    if(logoutButton.disabled||pendingLogoutButton.disabled)return;
+    logoutButton.disabled=true;pendingLogoutButton.disabled=true;
+    logoutButton.textContent='ログアウト中…';pendingLogoutButton.textContent='ログアウト中…';
+    let serverLogoutOk=false,logoutMessage='';
     try{
       await api('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
       serverLogoutOk=true;
     }catch(e){
       console.warn('Server logout failed:',e);
+      logoutMessage=e.message||'サーバーへの接続に失敗しました。';
     }
     clearInterval(bootPoll);clearTimeout(bootTimer);
     try{
@@ -303,9 +319,12 @@
     loading.style.display='none';startGate.hidden=true;userHomebar.hidden=true;
     toolsLauncher.hidden=true;toolsPanel.hidden=true;gate.hidden=false;
     username.value='';password.value='';error.textContent='';
-    logoutButton.disabled=false;logoutButton.textContent='ログアウト';
-    if(!serverLogoutOk)error.textContent='画面からログアウトしましたが、サーバーへのセッション解除が確認できませんでした。ページを閉じて再度開いてください。';
-  });
+    logoutButton.disabled=false;pendingLogoutButton.disabled=false;
+    logoutButton.textContent='ログアウト';pendingLogoutButton.textContent='ログアウトして戻る';
+    if(!serverLogoutOk)error.textContent='画面からログアウトしました。サーバー側の解除は未確認です：'+logoutMessage;
+  }
+  logoutButton.addEventListener('click',performLogout);
+  pendingLogoutButton.addEventListener('click',performLogout);
 
   startButton.addEventListener('click',()=>{
     const w=frame.contentWindow;
