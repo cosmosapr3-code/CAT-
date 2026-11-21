@@ -666,13 +666,31 @@ async function handleApi(request, env) {
     const body = await request.json().catch(() => ({}));
     const token = String(body.token || "");
     const username = String(body.username || "").trim();
-    if (!/^[a-f0-9]{64}$/.test(token) || !username) return json({ error: "受取情報が正しくありません。" }, 400);
+    const terraToken = String(body.terraToken || "").trim();
+    if (!/^[a-f0-9]{64}$/.test(token) || !username || terraToken.length < 20) return json({ error: "受取情報またはTERRACARDログイン情報が正しくありません。" }, 400);
+    // Require an authenticated TERRA CARD player session too; an operator token or
+    // a guessed username must not be enough to consume a one-time reward.
+    let terraSession;
+    try {
+      const verifyResponse = await fetch("https://terracard-api.cosmosapr3.workers.dev/me", {
+        method: "GET", redirect: "error", cache: "no-store",
+        headers: { "Authorization": "Bearer " + terraToken }
+      });
+      terraSession = await verifyResponse.json().catch(() => ({}));
+      if (!verifyResponse.ok || !terraSession.player || typeof terraSession.player !== "object") {
+        return json({ error: "TERRACARDのプレイヤーとしてログインしてください。" }, 401);
+      }
+    } catch {
+      return json({ error: "TERRACARDのログイン状態を確認できませんでした。" }, 502);
+    }
+    const verifiedUsername = String(terraSession.username || terraSession.player.username || terraSession.player.userName || "").trim();
     const db = getDb(env);
     const row = await db.prepare(
       "SELECT event_id, username, status FROM terra_reward_claims WHERE claim_token = ?"
     ).bind(token).first();
     if (!row) return json({ error: "受取コードが見つかりません。" }, 404);
-    if (username.toLowerCase() !== String(row.username || "").trim().toLowerCase()) {
+    if (username.toLowerCase() !== String(row.username || "").trim().toLowerCase() ||
+        (verifiedUsername && verifiedUsername.toLowerCase() !== String(row.username || "").trim().toLowerCase())) {
       return json({ error: "CAT大戦争とTERRACARDのアカウント名が一致しません。" }, 403);
     }
     if (row.status === "claimed") return json({ ok: true, alreadyClaimed: true });
