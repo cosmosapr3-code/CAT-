@@ -940,8 +940,19 @@ async function handleApi(request, env) {
     if (session?.role === "player") {
       const config = await loadConfig(env, request);
       const db = getDb(env);
-      await retryPendingTerraRewardDeliveries(db, env, session.user_id);
       const data = await readProfileForUser(db, session.user_id, config);
+
+      // Backfill bridge deliveries for missions completed before the reward bridge
+      // was enabled. The deterministic event ID makes this safe to run on every
+      // mission-list request without creating duplicate rewards.
+      for (const mission of missions) {
+        if (!data.profile.completedMissions.includes(mission.id)) continue;
+        for (const rewardId of safeStringIds(mission.rewards?.externalRewardIds, 100)) {
+          await ensureTerraRewardDelivery(db, session, mission, rewardId);
+        }
+      }
+
+      await retryPendingTerraRewardDeliveries(db, env, session.user_id);
       progress = {
         completedMissions: data.profile.completedMissions,
         ownedExternalRewards: data.profile.ownedExternalRewards,
