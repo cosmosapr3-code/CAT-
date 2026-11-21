@@ -94,6 +94,14 @@
     <div class="cat-tools-row"><label class="cat-tools-field">配布キャラクター<select id="cat-grant-characters" multiple></select></label><label class="cat-tools-field">開放する既存ステージ<select id="cat-grant-stages" multiple></select></label><label class="cat-tools-field">別ゲーム用報酬<select id="cat-grant-external-rewards" multiple></select></label></div>
     <button id="cat-grant-submit" class="cat-tools-action" type="button">この内容を配布</button>
     <p class="cat-tools-note">数値は現在の所持量に加算。キャラクター・カード・ステージ開放は未所持分だけ追加します。</p>
+    <div class="cat-tools-section" id="cat-name-editor">
+      <h3>🏷️ キャラクターの正式名称を登録</h3>
+      <p class="cat-tools-note">元のScratchデータには内部コードしか保存されていないキャラクターがあります。正しい表示名を入力して保存すると、編成・敵図鑑・運営の配布一覧に反映されます。</p>
+      <label class="cat-tools-field">キャラクター（味方・敵）<select id="cat-name-character"></select></label>
+      <label class="cat-tools-field">表示する正式名称<input id="cat-character-name" type="text" maxlength="80" placeholder="正式名称を入力"></label>
+      <button id="cat-name-save" class="cat-tools-action" type="button">この名前を保存</button>
+      <p id="cat-name-status" class="cat-tools-note" aria-live="polite">名前を登録すると、次回のゲーム読み込みから使われます。</p>
+    </div>
     <div class="cat-tools-section" id="cat-terra-stage-editor">
       <h3>🏟️ TERRA CARDステージ設定</h3>
       <p class="cat-tools-note">CAT大戦争内に追加するステージです。選んだ敵キャラクターが順番に登場し、倍率が敵の強さに反映されます。</p>
@@ -132,8 +140,60 @@
   window.CAT_REPORT_STAGE_WIN=reportStageWin;
   window.addEventListener('message',e=>{if(e.source!==frame.contentWindow)return;const d=e.data||{};if(d.type==='CAT_STAGE_WIN'&&(d.stageId||d.legacyCode||d.stageName))reportStageWin(d.stageId||null,d.legacyCode||null,d.stageName||null).catch(err=>{toolsError.textContent=err.message;});});
   async function loadPlayerMissions(){const data=await api('/api/missions');const deliveries=data.progress?.terraDeliveries||[];$('cat-mission-list').innerHTML=data.missions.map(m=>{const done=(data.progress.completedMissions||[]).includes(m.id);const r=m.rewards||{};const externalIds=Array.isArray(r.externalRewardIds)?r.externalRewardIds:[];const deliveryHtml=externalIds.map(id=>{const item=(data.externalRewards||[]).find(x=>x.id===id);const state=deliveries.find(x=>x.missionId===m.id&&x.rewardId===id);const label=state?.status==='delivered'?'✅ TERRACARDへ送信済み':(state?'⏳ TERRACARDへ送信待ち':(done?'⏳ 送信準備中':'クリア後に送信'));return '<div class="cat-tools-note">🎁 '+esc(item?.name||id)+'：'+label+'</div>';}).join('');return '<article class="cat-tools-mission '+(done?'done':'')+'"><b>'+(done?'✅ ':'')+esc(m.title)+'</b><p class="cat-tools-note">'+esc(m.description||'')+'</p><small>条件：'+esc(m.stageName||m.stageId||'ステージ勝利')+' / 報酬：XP '+Number(r.xp||0)+'・CATチュール '+Number(r.catChuru||0)+'</small>'+deliveryHtml+'<div class="cat-tools-note">'+(done?'達成済み':'未達成')+'</div></article>';}).join('');const owned=(data.progress.ownedExternalRewards||[]).map(id=>data.externalRewards.find(item=>item.id===id)).filter(Boolean);$('cat-owned-external-rewards').innerHTML=owned.length?owned.map(item=>'<div class="cat-tools-card"><img src="'+esc(item.image)+'" alt="'+esc(item.name)+'"><div><b>'+esc(item.name)+'</b><p class="cat-tools-note">'+esc(item.description)+'</p></div></div>').join(''):'<p class="cat-tools-note">まだ別ゲーム用の報酬を持っていません。</p>';}
-  async function loadAdminPanel(){const [m,c,p,t]=await Promise.all([api('/api/admin/missions'),api('/api/admin/catalog'),api('/api/admin/players'),api('/api/admin/terra-stage')]);adminMissions=m.missions;cardCatalog=m.externalRewards;adminCatalog=c;$('cat-admin-player').innerHTML=optionsHtml(p.players,'id','username',true);const chars=c.characters||[],stages=c.stages||[];$('cat-grant-characters').innerHTML=optionsHtml(chars,'id','name');$('cat-mission-characters-input').innerHTML=optionsHtml(chars,'id','name');$('cat-grant-stages').innerHTML=optionsHtml(stages,'id','name');$('cat-mission-stages-input').innerHTML=optionsHtml(stages,'id','name');$('cat-mission-stage-input').innerHTML=optionsHtml(stages,'id','name');$('cat-grant-external-rewards').innerHTML=optionsHtml(m.externalRewards||[],'id','name');$('cat-mission-external-rewards-input').innerHTML=optionsHtml(m.externalRewards||[],'id','name');$('cat-terra-enemies').innerHTML=optionsHtml(c.enemies||[],'id','name');$('cat-terra-multiplier').value=String(t.stage?.multiplier||1);const selected=new Set(t.selectedEnemyIds||[]);[...$('cat-terra-enemies').options].forEach(o=>o.selected=selected.has(o.value));$('cat-terra-status').textContent=selected.size?'保存済み：敵 '+selected.size+'体 / 倍率 ×'+$('cat-terra-multiplier').value:'まだ敵が設定されていません。敵を選んで保存してください。';renderAdminMissionList();}
-  function renderAdminMissionList(){$('cat-admin-mission-list').innerHTML='<h3 style="margin-top:20px">登録中のミッション</h3>'+adminMissions.map(m=>'<article class="cat-tools-mission"><b>'+esc(m.title)+'</b><small class="cat-tools-note" style="display:block">'+esc(m.stageName||m.stageId||'')+' / '+(m.fixed?'固定ミッション':'運営追加')+'</small>'+(m.fixed?'':'<button type="button" class="cat-tools-action" data-delete-mission="'+esc(m.id)+'">削除</button>')+'</article>').join('');document.querySelectorAll('[data-delete-mission]').forEach(b=>b.onclick=async()=>{adminMissions=adminMissions.filter(m=>m.id!==b.dataset.deleteMission);await saveAdminMissions();});}
+  async function loadAdminPanel(){
+    // 配布に必須なのはキャラ一覧とプレイヤー一覧。ミッション/TERRAの失敗で配布欄を止めない。
+    const [c,p]=await Promise.all([api('/api/admin/catalog'),api('/api/admin/players')]);
+    adminCatalog=c;
+    const chars=c.characters||[],enemies=c.enemies||[],stages=c.stages||[];
+    const playerOptions=(p.players||[]).map(x=>({...x,displayName:x.username+'（XP '+Number(x.xp||0)+' / CAT '+Number(x.catChuru||0)+'）'}));
+    $('cat-admin-player').innerHTML=optionsHtml(playerOptions,'id','displayName',true);
+    const charOptions=chars.map(x=>({...x,displayName:x.name+(x.legacyCode?' ['+x.legacyCode+']':'')}));
+    $('cat-grant-characters').innerHTML=optionsHtml(charOptions,'id','displayName');
+    $('cat-mission-characters-input').innerHTML=optionsHtml(charOptions,'id','displayName');
+    $('cat-grant-stages').innerHTML=optionsHtml(stages,'id','name');
+    $('cat-mission-stages-input').innerHTML=optionsHtml(stages,'id','name');
+    $('cat-mission-stage-input').innerHTML=optionsHtml(stages,'id','name');
+    $('cat-grant-external-rewards').innerHTML=optionsHtml(c.externalRewards||[],'id','name');
+    $('cat-mission-external-rewards-input').innerHTML=optionsHtml(c.externalRewards||[],'id','name');
+    $('cat-terra-enemies').innerHTML=optionsHtml(enemies,'id','name');
+
+    const allCharacters=(c.allCharacters||[...chars,...enemies]).map(x=>({
+      ...x,
+      displayName:(x.side==='enemy'?'敵':'味方')+'：'+x.name+' ['+(x.legacyCode||x.id)+']'
+    }));
+    $('cat-name-character').innerHTML=optionsHtml(allCharacters,'id','displayName');
+    $('cat-name-character').onchange=()=>{
+      const selected=allCharacters.find(x=>x.id===$('cat-name-character').value);
+      $('cat-character-name').value=selected?.name||'';
+    };
+    if(allCharacters.length) $('cat-name-character').dispatchEvent(new Event('change'));
+
+    const optional=await Promise.allSettled([api('/api/admin/missions'),api('/api/admin/terra-stage')]);
+    const problems=[];
+    if(optional[0].status==='fulfilled'){
+      adminMissions=optional[0].value.missions||[];
+    }else{
+      adminMissions=[];
+      problems.push('ミッション設定は読み込めませんでした');
+    }
+    if(optional[1].status==='fulfilled'){
+      const t=optional[1].value;
+      $('cat-terra-multiplier').value=String(t.stage?.multiplier||1);
+      const selected=new Set(t.selectedEnemyIds||[]);
+      [...$('cat-terra-enemies').options].forEach(o=>o.selected=selected.has(o.value));
+      $('cat-terra-status').textContent=selected.size
+        ?'保存済み：敵 '+selected.size+'体 / 倍率 ×'+$('cat-terra-multiplier').value
+        :'まだ敵が設定されていません。敵を選んで保存してください。';
+    }else{
+      $('cat-terra-status').textContent='TERRA CARD設定の読み込みに失敗しました：'+(optional[1].reason?.message||'通信エラー');
+      problems.push('TERRA CARD設定は読み込めませんでした');
+    }
+    renderAdminMissionList();
+    toolsError.textContent=problems.length
+      ?'配布機能は使用できます。なお、'+problems.join('・')+'。'
+      :'';
+  }
+    function renderAdminMissionList(){$('cat-admin-mission-list').innerHTML='<h3 style="margin-top:20px">登録中のミッション</h3>'+adminMissions.map(m=>'<article class="cat-tools-mission"><b>'+esc(m.title)+'</b><small class="cat-tools-note" style="display:block">'+esc(m.stageName||m.stageId||'')+' / '+(m.fixed?'固定ミッション':'運営追加')+'</small>'+(m.fixed?'':'<button type="button" class="cat-tools-action" data-delete-mission="'+esc(m.id)+'">削除</button>')+'</article>').join('');document.querySelectorAll('[data-delete-mission]').forEach(b=>b.onclick=async()=>{adminMissions=adminMissions.filter(m=>m.id!==b.dataset.deleteMission);await saveAdminMissions();});}
   async function saveAdminMissions(){const result=await api('/api/admin/missions',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({missions:adminMissions})});adminMissions=result.missions;renderAdminMissionList();}
   async function openToolsPanel(){toolsError.textContent='';toolsPanel.hidden=false;toolsTitle.textContent=auth?.role==='admin'?'運営パネル':'ミッション';$('cat-admin-tools').hidden=auth?.role!=='admin';$('cat-player-missions').hidden=auth?.role==='admin';try{if(auth?.role==='admin')await loadAdminPanel();else await loadPlayerMissions();}catch(e){toolsError.textContent='データの読み込みに失敗しました：'+(e.message||e);}}
   toolsLauncher.addEventListener('click',openToolsPanel);$('cat-tools-close').addEventListener('click',()=>toolsPanel.hidden=true);
@@ -145,7 +205,74 @@
     }catch(e){$('cat-terra-status').textContent='保存に失敗しました：'+e.message;}
   });
 
-  $('cat-grant-submit').addEventListener('click',async()=>{try{const playerId=$('cat-admin-player').value;if(!playerId)throw new Error('配布先を選択してください。');const result=await api('/api/admin/grants',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId,xp:Number($('cat-grant-xp').value||0),catChuru:Number($('cat-grant-churu').value||0),characterIds:selectedValues('cat-grant-characters'),stageIds:selectedValues('cat-grant-stages'),externalRewardIds:selectedValues('cat-grant-external-rewards')})});toolsError.textContent='配布しました。経験値 +'+result.added.xp+' / CATチュール +'+result.added.catChuru+' / キャラ '+result.added.characterIds.length+'体 / ステージ '+result.added.stageIds.length+'件 / 別ゲーム報酬 '+result.added.externalRewardIds.length+'件';}catch(e){toolsError.textContent='配布に失敗しました：'+e.message;}});
+  $('cat-name-save').addEventListener('click',async()=>{
+    const button=$('cat-name-save');
+    try{
+      const id=$('cat-name-character').value;
+      const name=$('cat-character-name').value.trim();
+      if(!id)throw new Error('キャラクターを選んでください。');
+      if(!name)throw new Error('正式名称を入力してください。');
+      button.disabled=true;
+      $('cat-name-status').textContent='保存中…';
+      const result=await api('/api/admin/character-names',{
+        method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({names:[{id,name}]})
+      });
+      await loadAdminPanel();
+      $('cat-name-character').value=id;
+      $('cat-character-name').value=result.updated?.[0]?.name||name;
+      $('cat-name-status').textContent='保存しました。編成・敵図鑑・配布一覧は次回読み込み時からこの名前になります。';
+    }catch(e){
+      $('cat-name-status').textContent='名前の保存に失敗しました：'+e.message;
+    }finally{button.disabled=false;}
+  });
+
+  $('cat-grant-submit').addEventListener('click',async()=>{
+    const button=$('cat-grant-submit');
+    try{
+      const playerId=$('cat-admin-player').value;
+      if(!playerId)throw new Error('配布先プレイヤーを選択してください。');
+      const xp=Number($('cat-grant-xp').value||0);
+      const catChuru=Number($('cat-grant-churu').value||0);
+      const characterIds=selectedValues('cat-grant-characters');
+      const stageIds=selectedValues('cat-grant-stages');
+      const externalRewardIds=selectedValues('cat-grant-external-rewards');
+      if(!(xp>0||catChuru>0||characterIds.length||stageIds.length||externalRewardIds.length))
+        throw new Error('配布する経験値・CATチュール・キャラクター・報酬・ステージを1つ以上指定してください。');
+      button.disabled=true;
+      button.textContent='配布中…';
+      const result=await api('/api/admin/grants',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({playerId,xp,catChuru,characterIds,stageIds,externalRewardIds})
+      });
+      const updated=await api('/api/admin/players');
+      const selectedPlayer=updated.players.find(x=>x.id===playerId);
+      if(selectedPlayer){
+        const keep=playerId;
+        $('cat-admin-player').innerHTML=optionsHtml(
+          updated.players.map(x=>({...x,displayName:x.username+'（XP '+Number(x.xp||0)+' / CAT '+Number(x.catChuru||0)+'）'})),
+          'id','displayName',true
+        );
+        $('cat-admin-player').value=keep;
+      }
+      $('cat-grant-xp').value='0';
+      $('cat-grant-churu').value='0';
+      [...$('cat-grant-characters').options].forEach(o=>o.selected=false);
+      [...$('cat-grant-stages').options].forEach(o=>o.selected=false);
+      [...$('cat-grant-external-rewards').options].forEach(o=>o.selected=false);
+      toolsError.textContent='配布成功：'+(selectedPlayer?.username||'選択プレイヤー')+
+        ' / 経験値 +'+result.added.xp+
+        ' / CATチュール +'+result.added.catChuru+
+        ' / キャラクター '+result.added.characterIds.length+'体'+
+        ' / ステージ '+result.added.stageIds.length+'件'+
+        ' / 別ゲーム用報酬 '+result.added.externalRewardIds.length+'件';
+    }catch(e){
+      toolsError.textContent='配布に失敗しました：'+e.message;
+    }finally{
+      button.disabled=false;
+      button.textContent='この内容を配布';
+    }
+  });
   $('cat-mission-add').addEventListener('click',async()=>{try{const stageId=$('cat-mission-stage-input').value,stage=adminCatalog.stages.find(x=>x.id===stageId),title=$('cat-mission-title-input').value.trim();if(!stage||!title)throw new Error('ミッション名と対象ステージを選んでください。');adminMissions.push({id:'mission-'+Date.now().toString(36),title,type:'stage_win',stageId,stageName:stage.name,description:'ステージ「'+stage.name+'」に勝利する',rewards:{xp:Number($('cat-mission-xp-input').value||0),catChuru:Number($('cat-mission-churu-input').value||0),characterIds:selectedValues('cat-mission-characters-input'),externalRewardIds:selectedValues('cat-mission-external-rewards-input'),stageIds:selectedValues('cat-mission-stages-input')}});await saveAdminMissions();$('cat-mission-title-input').value='';toolsError.textContent='ミッションを追加しました。';}catch(e){toolsError.textContent='ミッション保存に失敗しました：'+e.message;}});
 
   function labels(){
