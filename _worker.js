@@ -447,6 +447,109 @@ async function saveProfileForUser(db, userId, profile, previousJson) {
   if (!result.meta?.changes) throw new Error("プロフィールが同時に更新されました。もう一度お試しください。");
 }
 
+// Server-to-server reward bridge. Secrets are configured as Cloudflare Worker secrets;
+ // never place them in the browser or in GitHub.
+async function ensureTerraRewardDelivery(db, session, mission, rewardId) {
+  const reward = EXTERNAL_REWARD_CATALOG.find(item => item.id === rewardId);
+  if (!reward || session?.role !== "player") return;
+  const seed = [session.user_id, mission.id, reward.id].join("|");
+  const eventId = "cat-" + await sha256(seed);
+  const payload = {
+    eventId,
+    sourceGame: "CAT大戦争",
+    username: String(session.username || "").trim(),
+    missionId: mission.id,
+    missionTitle: mission.title,
+    reward: {
+      id: reward.id,
+      name: reward.name,
+      image: reward.image,
+      description: reward.description,
+      originalEffect: reward.originalEffect
+    },
+    completedAt: nowSeconds()
+  };
+  await db.prepare(`
+    INSERT OR IGNORE INTO terra_reward_deliveries
+    (event_id, user_id, username, mission_id, reward_id, payload_json, status, last_error, attempts, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'pending', '', 0, ?, ?)
+  `).bind(eventId, session.user_id, payload.username, mission.id, reward.id, JSON.stringify(payload), nowSeconds(), nowSeconds()).run();
+}
+
+async function retryPendingTerraRewardDeliveries(db, env, userId) {
+  const secret = String(env.TERRACARD_BRIDGE_SECRET || "");
+  const endpoint = String(env.TERRACARD_REWARD_URL || "https://terracard-api.cosmos-apr-3.workers.dev/bridge/cat-reward");
+  if (!secret || !userId) return [];
+  let url;
+  try {
+    url = new URL(endpoint);
+    if (url.protocol !== "https:") return [];
+  } catch {
+    return [];
+  }
+  const rows = await db.prepare(`
+    SELECT event_id, payload_json, attempts
+    FROM terra_reward_deliveries
+    WHERE user_id = ? AND status = 'pending'
+    ORDER BY created_at ASC
+    LIMIT 10
+  `).bind(userId).all();
+  const results = [];
+  for (const row of (rows.results || [])) {
+    let payload;
+    try { payload = JSON.parse(row.payload_json); }
+    catch {
+      await db.prepare("UPDATE terra_reward_deliveries SET status='error', last_error=?, updated_at=? WHERE event_id=?")
+        .bind("保存データを読み取れません。", nowSeconds(), row.event_id).run();
+      results.push({ eventId: row.event_id, status: "error" });
+      continue;
+    }
+    try {
+      const response = await fetch(url.toString(), {
+        method: "POST",
+        redirect: "error",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + secret,
+          "X-CAT-Reward-Event": row.event_id
+        },
+        body: JSON.stringify(payload)
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body.ok !== true) {
+        throw new Error(String(body.error || ("TERRACARD API HTTP " + response.status)).slice(0, 240));
+      }
+      await db.prepare("UPDATE terra_reward_deliveries SET status='delivered', last_error='', attempts=attempts+1, updated_at=?, delivered_at=? WHERE event_id=?")
+        .bind(nowSeconds(), nowSeconds(), row.event_id).run();
+      results.push({ eventId: row.event_id, status: "delivered" });
+    } catch (error) {
+      const message = String(error?.message || "TERRACARDへの送信に失敗しました。").slice(0, 240);
+      await db.prepare("UPDATE terra_reward_deliveries SET last_error=?, attempts=attempts+1, updated_at=? WHERE event_id=?")
+        .bind(message, nowSeconds(), row.event_id).run();
+      results.push({ eventId: row.event_id, status: "pending", error: message });
+    }
+  }
+  return results;
+}
+
+async function getTerraRewardDeliveryStatus(db, userId) {
+  const rows = await db.prepare(`
+    SELECT mission_id, reward_id, status, last_error, created_at, delivered_at
+    FROM terra_reward_deliveries
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+    LIMIT 100
+  `).bind(userId).all();
+  return (rows.results || []).map(row => ({
+    missionId: row.mission_id,
+    rewardId: row.reward_id,
+    status: row.status,
+    message: row.status === "delivered" ? "TERRACARDへ送信済み" : "TERRACARDへ送信待ち",
+    lastError: row.status === "pending" ? row.last_error : "",
+    deliveredAt: row.delivered_at || null
+  }));
+}
+
 let schemaInitialization = null;
 async function ensureSchema(env) {
   const db = getDb(env);
@@ -457,6 +560,21 @@ async function ensureSchema(env) {
       db.prepare(`CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, role TEXT NOT NULL, username TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL)`),
       db.prepare(`CREATE TABLE IF NOT EXISTS profiles (user_id TEXT PRIMARY KEY, profile_json TEXT NOT NULL, updated_at INTEGER NOT NULL)`),
       db.prepare(`CREATE TABLE IF NOT EXISTS game_config (config_key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at INTEGER NOT NULL)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS terra_reward_deliveries (
+        event_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        mission_id TEXT NOT NULL,
+        reward_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        last_error TEXT NOT NULL DEFAULT '',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        delivered_at INTEGER
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_terra_reward_pending ON terra_reward_deliveries(user_id, status)`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)`)
     ]);
@@ -821,8 +939,16 @@ async function handleApi(request, env) {
     let progress = { completedMissions: [], ownedExternalRewards: [] };
     if (session?.role === "player") {
       const config = await loadConfig(env, request);
-      const data = await readProfileForUser(getDb(env), session.user_id, config);
-      progress = { completedMissions: data.profile.completedMissions, ownedExternalRewards: data.profile.ownedExternalRewards, unlockedStages: data.profile.unlockedStages, unlockedStageCodes: data.profile.unlockedStages.map(id => config.stages.find(stage => stage.id === id)?.legacyCode).filter(Boolean) };
+      const db = getDb(env);
+      await retryPendingTerraRewardDeliveries(db, env, session.user_id);
+      const data = await readProfileForUser(db, session.user_id, config);
+      progress = {
+        completedMissions: data.profile.completedMissions,
+        ownedExternalRewards: data.profile.ownedExternalRewards,
+        unlockedStages: data.profile.unlockedStages,
+        unlockedStageCodes: data.profile.unlockedStages.map(id => config.stages.find(stage => stage.id === id)?.legacyCode).filter(Boolean),
+        terraDeliveries: await getTerraRewardDeliveryStatus(db, session.user_id)
+      };
     }
     return json({ missions, externalRewards: EXTERNAL_REWARD_CATALOG, progress });
   }
@@ -923,7 +1049,25 @@ async function handleApi(request, env) {
       data.profile.completedMissions.push(mission.id); completed.push(mission);
     }
     await saveProfileForUser(db, auth.session.user_id, data.profile, data.row?.profile_json ?? null);
-    return json({ ok: true, completed, profile: data.profile, externalRewards: EXTERNAL_REWARD_CATALOG });
+
+    // A previously completed mission may predate the bridge. Queue its external
+    // rewards too, then deliver pending entries idempotently to TERRACARD.
+    for (const mission of eligible) {
+      if (!data.profile.completedMissions.includes(mission.id)) continue;
+      for (const rewardId of safeStringIds(mission.rewards?.externalRewardIds, 100)) {
+        await ensureTerraRewardDelivery(db, auth.session, mission, rewardId);
+      }
+    }
+    const terraAttempts = await retryPendingTerraRewardDeliveries(db, env, auth.session.user_id);
+    const terraDeliveries = await getTerraRewardDeliveryStatus(db, auth.session.user_id);
+    return json({
+      ok: true,
+      completed,
+      profile: data.profile,
+      externalRewards: EXTERNAL_REWARD_CATALOG,
+      terraDeliveries,
+      terraDeliveryAttempted: terraAttempts.length
+    });
   }
   // Admin grants currencies, characters, collectible cards and stage unlock flags.
   if (path === "/api/admin/grants" && method === "POST") {
