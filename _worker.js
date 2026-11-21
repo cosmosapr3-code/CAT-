@@ -449,6 +449,11 @@ async function saveProfileForUser(db, userId, profile, previousJson) {
 
 // Server-to-server reward bridge. Secrets are configured as Cloudflare Worker secrets;
  // never place them in the browser or in GitHub.
+function createTerraClaimToken() {
+  return [...crypto.getRandomValues(new Uint8Array(32))]
+    .map(value => value.toString(16).padStart(2, "0")).join("");
+}
+
 async function ensureTerraRewardDelivery(db, session, mission, rewardId) {
   const reward = EXTERNAL_REWARD_CATALOG.find(item => item.id === rewardId);
   if (!reward || session?.role !== "player") return;
@@ -469,11 +474,26 @@ async function ensureTerraRewardDelivery(db, session, mission, rewardId) {
     },
     completedAt: nowSeconds()
   };
+  const now = nowSeconds();
   await db.prepare(`
     INSERT OR IGNORE INTO terra_reward_deliveries
     (event_id, user_id, username, mission_id, reward_id, payload_json, status, last_error, attempts, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, 'pending', '', 0, ?, ?)
-  `).bind(eventId, session.user_id, payload.username, mission.id, reward.id, JSON.stringify(payload), nowSeconds(), nowSeconds()).run();
+  `).bind(eventId, session.user_id, payload.username, mission.id, reward.id, JSON.stringify(payload), now, now).run();
+
+  // TERRA CARD receives the reward while the same player is signed in there.
+  // A random, one-use claim token avoids needing to edit its Cloudflare Worker.
+  const existing = await db.prepare(
+    "SELECT event_id FROM terra_reward_claims WHERE event_id = ?"
+  ).bind(eventId).first();
+  if (!existing) {
+    const token = createTerraClaimToken();
+    await db.prepare(`
+      INSERT OR IGNORE INTO terra_reward_claims
+      (event_id, claim_token, user_id, username, reward_id, payload_json, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+    `).bind(eventId, token, session.user_id, payload.username, reward.id, JSON.stringify(payload), now).run();
+  }
 }
 
 async function retryPendingTerraRewardDeliveries(db, env, userId) {
@@ -532,22 +552,30 @@ async function retryPendingTerraRewardDeliveries(db, env, userId) {
   return results;
 }
 
-async function getTerraRewardDeliveryStatus(db, userId) {
+async function getTerraRewardDeliveryStatus(db, userId, request) {
   const rows = await db.prepare(`
-    SELECT mission_id, reward_id, status, last_error, created_at, delivered_at
-    FROM terra_reward_deliveries
-    WHERE user_id = ?
-    ORDER BY created_at DESC
+    SELECT d.mission_id, d.reward_id, d.status, d.last_error, d.created_at, d.delivered_at,
+           c.claim_token, c.status AS claim_status
+    FROM terra_reward_deliveries d
+    LEFT JOIN terra_reward_claims c ON c.event_id = d.event_id
+    WHERE d.user_id = ?
+    ORDER BY d.created_at DESC
     LIMIT 100
   `).bind(userId).all();
-  return (rows.results || []).map(row => ({
-    missionId: row.mission_id,
-    rewardId: row.reward_id,
-    status: row.status,
-    message: row.status === "delivered" ? "TERRACARDへ送信済み" : "TERRACARDへ送信待ち",
-    lastError: row.status === "pending" ? row.last_error : "",
-    deliveredAt: row.delivered_at || null
-  }));
+  const origin = new URL(request.url).origin;
+  return (rows.results || []).map(row => {
+    const delivered = row.status === "delivered" || row.claim_status === "claimed";
+    const claimable = !delivered && row.claim_status === "pending" && !!row.claim_token;
+    return {
+      missionId: row.mission_id,
+      rewardId: row.reward_id,
+      status: delivered ? "delivered" : (claimable ? "claimable" : row.status),
+      message: delivered ? "TERRACARDへ受取済み" : (claimable ? "TERRACARDで受け取れます" : "TERRACARDへ送信待ち"),
+      claimUrl: claimable ? origin + "/api/terra-reward/claim?token=" + encodeURIComponent(row.claim_token) : "",
+      lastError: row.status === "pending" ? row.last_error : "",
+      deliveredAt: row.delivered_at || null
+    };
+  });
 }
 
 let schemaInitialization = null;
@@ -574,7 +602,19 @@ async function ensureSchema(env) {
         updated_at INTEGER NOT NULL,
         delivered_at INTEGER
       )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS terra_reward_claims (
+        event_id TEXT PRIMARY KEY,
+        claim_token TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        reward_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at INTEGER NOT NULL,
+        claimed_at INTEGER
+      )`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_terra_reward_pending ON terra_reward_deliveries(user_id, status)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_terra_claim_user ON terra_reward_claims(user_id, status)`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)`)
     ]);
@@ -587,6 +627,44 @@ async function handleApi(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method.toUpperCase();
+
+  // One-use external reward claim. The player must sign in to TERRA CARD
+  // separately; its frontend checks that the username matches before saving.
+  if (method === "GET" && path === "/api/terra-reward/claim") {
+    const token = String(url.searchParams.get("token") || "");
+    if (!/^[a-f0-9]{64}$/.test(token)) return json({ error: "受取コードが正しくありません。" }, 400);
+    const row = await getDb(env).prepare(
+      "SELECT payload_json, status FROM terra_reward_claims WHERE claim_token = ?"
+    ).bind(token).first();
+    if (!row) return json({ error: "受取コードが見つかりません。" }, 404);
+    if (row.status !== "pending") return json({ error: "この報酬はすでに受け取り済みです。" }, 409);
+    let payload;
+    try { payload = JSON.parse(row.payload_json); }
+    catch { return json({ error: "報酬データを読み取れません。" }, 500); }
+    return json({ ok: true, payload });
+  }
+
+  if (method === "POST" && path === "/api/terra-reward/ack") {
+    const body = await request.json().catch(() => ({}));
+    const token = String(body.token || "");
+    const username = String(body.username || "").trim();
+    if (!/^[a-f0-9]{64}$/.test(token) || !username) return json({ error: "受取情報が正しくありません。" }, 400);
+    const db = getDb(env);
+    const row = await db.prepare(
+      "SELECT event_id, username, status FROM terra_reward_claims WHERE claim_token = ?"
+    ).bind(token).first();
+    if (!row) return json({ error: "受取コードが見つかりません。" }, 404);
+    if (username.toLowerCase() !== String(row.username || "").trim().toLowerCase()) {
+      return json({ error: "CAT大戦争とTERRACARDのアカウント名が一致しません。" }, 403);
+    }
+    if (row.status === "claimed") return json({ ok: true, alreadyClaimed: true });
+    const now = nowSeconds();
+    await db.batch([
+      db.prepare("UPDATE terra_reward_claims SET status='claimed', claimed_at=? WHERE event_id=? AND status='pending'").bind(now, row.event_id),
+      db.prepare("UPDATE terra_reward_deliveries SET status='delivered', last_error='', delivered_at=?, updated_at=? WHERE event_id=?").bind(now, now, row.event_id)
+    ]);
+    return json({ ok: true, alreadyClaimed: false });
+  }
 
   // 接続確認
   if (method === "GET" && path === "/api/health") {
@@ -618,10 +696,14 @@ async function handleApi(request, env) {
     }
   }
 
+  // The one-use reward acknowledgement is allowed from the TERRA CARD frontend.
+  const isTerraClaimAck = path === "/api/terra-reward/ack" && method === "POST" && isAllowedTerraClaimOrigin(request);
+
   // 別サイトからのデータ変更を拒否
   if (
     ["POST", "PUT", "PATCH", "DELETE"].includes(method) &&
-    !checkSameOrigin(request)
+    !checkSameOrigin(request) &&
+    !isTerraClaimAck
   ) {
     return json({ error: "不正な送信元です。" }, 403);
   }
@@ -958,7 +1040,7 @@ async function handleApi(request, env) {
         ownedExternalRewards: data.profile.ownedExternalRewards,
         unlockedStages: data.profile.unlockedStages,
         unlockedStageCodes: data.profile.unlockedStages.map(id => config.stages.find(stage => stage.id === id)?.legacyCode).filter(Boolean),
-        terraDeliveries: await getTerraRewardDeliveryStatus(db, session.user_id)
+        terraDeliveries: await getTerraRewardDeliveryStatus(db, session.user_id, request)
       };
     }
     return json({ missions, externalRewards: EXTERNAL_REWARD_CATALOG, progress });
@@ -1070,7 +1152,7 @@ async function handleApi(request, env) {
       }
     }
     const terraAttempts = await retryPendingTerraRewardDeliveries(db, env, auth.session.user_id);
-    const terraDeliveries = await getTerraRewardDeliveryStatus(db, auth.session.user_id);
+    const terraDeliveries = await getTerraRewardDeliveryStatus(db, auth.session.user_id, request);
     return json({
       ok: true,
       completed,
@@ -1319,19 +1401,64 @@ async function handleApi(request, env) {
   return json({ error: "APIが見つかりません。" }, 404);
 }
 
+function isAllowedTerraClaimOrigin(request) {
+  const raw = request.headers.get("Origin");
+  if (!raw) return false;
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" && (
+      u.hostname === "cosmosapr3-code.github.io" ||
+      u.hostname.endsWith(".pages.dev") ||
+      u.hostname.endsWith(".workers.dev")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function addTerraClaimCors(request, response) {
+  if (!isAllowedTerraClaimOrigin(request)) return response;
+  const headers = new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin", request.headers.get("Origin"));
+  headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type");
+  headers.set("Access-Control-Max-Age", "600");
+  headers.append("Vary", "Origin");
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    if (url.pathname === "/api/terra-reward/ack" && request.method === "OPTIONS" && isAllowedTerraClaimOrigin(request)) {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": request.headers.get("Origin"),
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+          "Access-Control-Max-Age": "600",
+          "Vary": "Origin"
+        }
+      });
+    }
+
     if (url.pathname.startsWith("/api/")) {
       try {
         await ensureSchema(env);
-        return await handleApi(request, env);
+        const response = await handleApi(request, env);
+        return (url.pathname === "/api/terra-reward/claim" || url.pathname === "/api/terra-reward/ack")
+          ? addTerraClaimCors(request, response)
+          : response;
       } catch (error) {
         console.error("CAT大戦争 API error:", error);
-        return json({
+        const response = json({
           error: error?.message || "サーバー内部でエラーが発生しました。"
         }, 500);
+        return (url.pathname === "/api/terra-reward/claim" || url.pathname === "/api/terra-reward/ack")
+          ? addTerraClaimCors(request, response)
+          : response;
       }
     }
 
