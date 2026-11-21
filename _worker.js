@@ -295,7 +295,7 @@ function mergeCharacterRoster(legacyCharacters, savedCharacters) {
 const TERRA_STAGE_ID = "stage-terra-card";
 function defaultTerraStage() {
   return { id: TERRA_STAGE_ID, name: "TERRA CARD", series: "運営ステージ", chapter: "運営ステージ",
-    description: "敵キャラクターと倍率を運営が設定するステージ", multiplier: 1, rewardXp: 0, rewardChuru: 0, music: "", enemyWaves: [] };
+    description: "敵キャラクターと倍率を運営が設定するステージ", configured: false, multiplier: 1, rewardXp: 0, rewardChuru: 0, music: "", enemyWaves: [] };
 }
 async function loadConfig(env, request) {
   const legacyData=await loadLegacyGameData(env,request);
@@ -855,7 +855,7 @@ async function handleApi(request, env) {
     if (!enemyIds.length) return json({ error: "敵キャラクターを1体以上選んでください。" }, 400);
     const previous = (config.stages || []).find(item => item.id === TERRA_STAGE_ID) || defaultTerraStage();
     const stage = { ...previous, id: TERRA_STAGE_ID, name: "TERRA CARD", series: "運営ステージ", chapter: "運営ステージ",
-      description: "運営が設定した敵キャラクターと倍率で戦うステージ", multiplier,
+      description: "運営が設定した敵キャラクターと倍率で戦うステージ", configured: true, multiplier,
       enemyWaves: enemyIds.map((characterId, index) => ({ characterId, at: 4 + index * 12, interval: 18, count: 1, hpMultiplier: 1, attackMultiplier: 1 })) };
     const next = { ...config, stages: [...(config.stages || []).filter(item => item.id !== TERRA_STAGE_ID), stage] };
     const configToSave = structuredClone(next);
