@@ -96,7 +96,7 @@
     <p class="cat-tools-note">数値は現在の所持量に加算。キャラクター・カード・ステージ開放は未所持分だけ追加します。</p>
     <div class="cat-tools-section" id="cat-name-editor">
       <h3>🏷️ キャラクターの正式名称を登録</h3>
-      <p class="cat-tools-note">元のScratchデータには内部コードしか保存されていないキャラクターがあります。正しい表示名を入力して保存すると、編成・敵図鑑・運営の配布一覧に反映されます。</p>
+      <p class="cat-tools-note">元のScratchデータには正式名ではなく内部コードだけのキャラクターがあります。正しい表示名を入力して保存すると、運営の配布一覧・敵キャラクター選択欄に反映されます。</p>
       <label class="cat-tools-field">キャラクター（味方・敵）<select id="cat-name-character"></select></label>
       <label class="cat-tools-field">表示する正式名称<input id="cat-character-name" type="text" maxlength="80" placeholder="正式名称を入力"></label>
       <button id="cat-name-save" class="cat-tools-action" type="button">この名前を保存</button>
@@ -221,7 +221,7 @@
       await loadAdminPanel();
       $('cat-name-character').value=id;
       $('cat-character-name').value=result.updated?.[0]?.name||name;
-      $('cat-name-status').textContent='保存しました。編成・敵図鑑・配布一覧は次回読み込み時からこの名前になります。';
+      $('cat-name-status').textContent='保存しました。運営の配布一覧・TERRA CARDの敵選択欄に反映されました。';
     }catch(e){
       $('cat-name-status').textContent='名前の保存に失敗しました：'+e.message;
     }finally{button.disabled=false;}
