@@ -7,3 +7,5 @@ wrangler.jsonc.txt
 .github/
 tools/
 README.md
+.git/
+.wrangler/
