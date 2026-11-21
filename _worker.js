@@ -514,61 +514,7 @@ async function ensureTerraRewardDelivery(db, session, mission, rewardId) {
   }
 }
 
-async function retryPendingTerraRewardDeliveries(db, env, userId) {
-  const secret = String(env.TERRACARD_BRIDGE_SECRET || "");
-  const endpoint = String(env.TERRACARD_REWARD_URL || "https://terracard-api.cosmos-apr-3.workers.dev/bridge/cat-reward");
-  if (!secret || !userId) return [];
-  let url;
-  try {
-    url = new URL(endpoint);
-    if (url.protocol !== "https:") return [];
-  } catch {
-    return [];
-  }
-  const rows = await db.prepare(`
-    SELECT event_id, payload_json, attempts
-    FROM terra_reward_deliveries
-    WHERE user_id = ? AND status = 'pending'
-    ORDER BY created_at ASC
-    LIMIT 10
-  `).bind(userId).all();
-  const results = [];
-  for (const row of (rows.results || [])) {
-    let payload;
-    try { payload = JSON.parse(row.payload_json); }
-    catch {
-      await db.prepare("UPDATE terra_reward_deliveries SET status='error', last_error=?, updated_at=? WHERE event_id=?")
-        .bind("保存データを読み取れません。", nowSeconds(), row.event_id).run();
-      results.push({ eventId: row.event_id, status: "error" });
-      continue;
-    }
-    try {
-      const response = await fetch(url.toString(), {
-        method: "POST",
-        redirect: "error",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + secret,
-          "X-CAT-Reward-Event": row.event_id
-        },
-        body: JSON.stringify(payload)
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || body.ok !== true) {
-        throw new Error(String(body.error || ("TERRACARD API HTTP " + response.status)).slice(0, 240));
-      }
-      await db.prepare("UPDATE terra_reward_deliveries SET status='delivered', last_error='', attempts=attempts+1, updated_at=?, delivered_at=? WHERE event_id=?")
-        .bind(nowSeconds(), nowSeconds(), row.event_id).run();
-      results.push({ eventId: row.event_id, status: "delivered" });
-    } catch (error) {
-      const message = String(error?.message || "TERRACARDへの送信に失敗しました。").slice(0, 240);
-      await db.prepare("UPDATE terra_reward_deliveries SET last_error=?, attempts=attempts+1, updated_at=? WHERE event_id=?")
-        .bind(message, nowSeconds(), row.event_id).run();
-      results.push({ eventId: row.event_id, status: "pending", error: message });
-    }
-  }
-  return results;
-}
+// Delivery is completed by a one-use claim URL. No cross-Worker secret is needed.
 
 async function getTerraRewardDeliveryStatus(db, userId, request) {
   const rows = await db.prepare(`
@@ -1071,7 +1017,6 @@ async function handleApi(request, env) {
         }
       }
 
-      await retryPendingTerraRewardDeliveries(db, env, session.user_id);
       progress = {
         completedMissions: data.profile.completedMissions,
         ownedExternalRewards: data.profile.ownedExternalRewards,
@@ -1227,15 +1172,13 @@ async function handleApi(request, env) {
         await ensureTerraRewardDelivery(db, auth.session, mission, rewardId);
       }
     }
-    const terraAttempts = await retryPendingTerraRewardDeliveries(db, env, auth.session.user_id);
     const terraDeliveries = await getTerraRewardDeliveryStatus(db, auth.session.user_id, request);
     return json({
       ok: true,
       completed,
       profile: data.profile,
       externalRewards: EXTERNAL_REWARD_CATALOG,
-      terraDeliveries,
-      terraDeliveryAttempted: terraAttempts.length
+      terraDeliveries
     });
   }
   // Admin grants currencies, characters, collectible cards and stage unlock flags.
