@@ -313,4 +313,47 @@ for index, code in enumerate(enemy_codes):
 write_contact_sheet(enemy_items, "enemy-contact-sheet.png")
 
 summary["contact_sheets"] = ["ally-contact-sheet.png", "enemy-contact-sheet.png"]
+
+# Focused extraction for admin-editor implementation: actual Scratch costume labels
+# and source lists used to show character names in the gacha and enemy encyclopedia.
+focus_targets = {
+    "ガチャ", "中身", "編成表", "mikata", "mikata2", "図鑑",
+    "z", "Pico", "味方?teki?キャラ", "Stage", "味方攻撃",
+    "パネル", "喋るcat"
+}
+summary["focused_costumes"] = {
+    t.get("name", ""): [c.get("name", "") for c in t.get("costumes", [])]
+    for t in targets if t.get("name", "") in focus_targets
+}
+stage_target = next((t for t in targets if t.get("isStage")), {})
+stat_list_names = {
+    "味方", "味方キャラ名前", "hpp制御システム", "hp減少",
+    "idousokudo", "syatei mikata", "△味方KB", "攻撃間隔",
+    "teki", "敵キャラクター図鑑", "てきさん", "hpgs",
+    "敵　金", "cat　ｃ", "〇そのキャラの必須経験値"
+}
+summary["focused_stat_lists"] = {
+    item[0]: item[1] for item in stage_target.get("lists", {}).values()
+    if item[0] in stat_list_names
+}
+summary["focused_name_blocks"] = []
+name_terms = {
+    "namae", "味方キャラ名前", "敵キャラクター図鑑",
+    "敵名前", "出てくる敵の名前", "味方キャラ"
+}
+for target in targets:
+    for block_id, block in target.get("blocks", {}).items():
+        if not isinstance(block, dict):
+            continue
+        fields = block.get("fields", {})
+        inputs = block.get("inputs", {})
+        literals = collect_literals(fields) + collect_literals(inputs)
+        if name_terms.intersection(literals):
+            summary["focused_name_blocks"].append({
+                "target": target.get("name", ""), "blockId": block_id,
+                "opcode": block.get("opcode", ""), "fields": fields,
+                "inputs": inputs, "next": block.get("next"),
+                "parent": block.get("parent")
+            })
+
 print(json.dumps(summary, ensure_ascii=False, separators=(",", ":")))
