@@ -27,6 +27,11 @@
 #cat-auth-error{min-height:20px;margin:12px 0 0;color:#ff9d8e;font-size:12px;line-height:1.45;overflow-wrap:anywhere}
 #cat-auth-foot{margin:10px 0 0;color:#958d7e;font-size:11px}
 #cat-game-loading{display:none;position:fixed;inset:0;align-items:center;justify-content:center;color:#ffe09a;background:#050505;font-weight:800}
+#cat-player-wallet{display:inline-flex;align-items:center;gap:5px;padding:7px 10px;border:1px solid #b98b35;border-radius:9px;background:#17130c;color:#ffe09a;font-size:12px;font-weight:800}
+#cat-speedup-use,#cat-missions-refresh{border:1px solid #9d762e;border-radius:9px;padding:8px 11px;background:#694917;color:#fff4d1;font-weight:800;cursor:pointer}
+#cat-speedup-use:disabled,#cat-missions-refresh:disabled{opacity:.55;cursor:wait}
+#cat-user-homebar{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;padding:7px}
+.cat-grant-small-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
 #cat-tools-launcher{position:fixed;right:14px;bottom:14px;z-index:2147482000;border:2px solid #e8c06d;border-radius:999px;padding:12px 17px;background:linear-gradient(#f7dc9f,#bf8730);color:#271a08;font-weight:900;box-shadow:0 5px 18px #0009;cursor:pointer}
 #cat-tools-launcher[hidden],#cat-tools-panel[hidden]{display:none!important}
 #cat-tools-panel{position:fixed;z-index:2147482500;inset:3vh 3vw;max-width:1000px;margin:auto;overflow:auto;border:2px solid #c99b42;border-radius:18px;background:#171717;color:#fff;padding:18px;box-shadow:0 20px 70px #000e}
@@ -105,17 +110,18 @@
 </div>
 <div id="cat-game-loading">CAT大戦争を読み込み中…</div>
 <iframe id="cat-game" title="CAT大戦争" allow="fullscreen; autoplay; gamepad; clipboard-read; clipboard-write"></iframe>
-<div id="cat-user-homebar" hidden><span>ユーザー名：</span><strong id="cat-user-name"></strong><small id="cat-user-role"></small><button id="cat-logout-button" type="button">ログアウト</button></div>
+<div id="cat-user-homebar" hidden><span>ユーザー名：</span><strong id="cat-user-name"></strong><small id="cat-user-role"></small><span id="cat-player-wallet" hidden>🌈 虹星 <b id="cat-player-rainbow-stars">0</b>　CATMAX <b id="cat-player-catmax">0</b></span><button id="cat-speedup-use" type="button" hidden disabled>⚡ スピードアップ ×0</button><button id="cat-logout-button" type="button">ログアウト</button></div>
 <div id="cat-start-gate" hidden><div id="cat-start-card"><h2>ゲームの準備ができました</h2><p>ログインしました。下のボタンを押すとCAT大戦争が始まります。</p><button id="cat-start-button" type="button">ゲームを開始</button><div id="cat-start-error"></div><button id="cat-pending-logout" type="button">ログアウトして戻る</button></div></div>
 <button id="cat-tools-launcher" type="button" hidden>🎯 ミッション / 運営パネル</button>
 <div id="cat-tools-panel" hidden>
   <div id="cat-tools-head"><h2 id="cat-tools-title">ミッション</h2><button id="cat-tools-close" type="button">閉じる</button></div>
   <div id="cat-tools-error" class="cat-tools-error" aria-live="polite"></div>
-  <section id="cat-player-missions" class="cat-tools-section"><h3>📜 ミッション</h3><div id="cat-mission-list"></div><h3 style="margin-top:18px">🎁 TERRACARD連携カード報酬</h3><p class="cat-tools-note">ミッション達成後、同じプレイヤー名でTERRACARDにログインし、受取ボタンからカードを受け取れます。</p><div id="cat-owned-external-rewards"></div></section>
+  <section id="cat-player-missions" class="cat-tools-section"><h3>📜 ミッション</h3><button id="cat-missions-refresh" type="button">🔄 報酬状況を再確認</button><div id="cat-mission-list"></div><h3 style="margin-top:18px">🎁 TERRACARD連携カード報酬</h3><p class="cat-tools-note">ミッション達成後、同じプレイヤー名でTERRACARDにログインし、受取ボタンからカードを受け取れます。</p><div id="cat-owned-external-rewards"></div></section>
   <section id="cat-admin-tools" class="cat-tools-section" hidden>
     <h3>🎁 プレイヤーへ報酬を配布</h3>
     <label class="cat-tools-field">配布先プレイヤー（ステージを追加するユーザー）<select id="cat-admin-player"></select></label>
     <div class="cat-tools-row"><label class="cat-tools-field">追加する経験値<input id="cat-grant-xp" type="number" min="0" max="1000000000" value="0"></label><label class="cat-tools-field">追加するCATチュール<input id="cat-grant-churu" type="number" min="0" max="1000000000" value="0"></label></div>
+    <div class="cat-grant-small-fields"><label class="cat-tools-field">配布する虹星<input id="cat-grant-rainbow-stars" type="number" min="0" max="1000000000" value="0"></label><label class="cat-tools-field">CATMAX<input id="cat-grant-catmax" type="number" min="0" max="1000000000" value="0"></label><label class="cat-tools-field">スピードアップ<input id="cat-grant-speed-up" type="number" min="0" max="1000000000" value="0"></label></div>
     <div class="cat-tools-row"><label class="cat-tools-field">配布キャラクター<div id="cat-grant-characters" class="cat-multi"></div></label><label class="cat-tools-field">このユーザーに追加するステージ<div id="cat-grant-stages" class="cat-multi"></div></label><label class="cat-tools-field">TERRACARDへ送るカード報酬<div id="cat-grant-external-rewards" class="cat-multi"></div></label></div>
     <label class="cat-tools-field">ゲーム開始後の章選択で開放する章（第1〜4章）<div id="cat-grant-chapters" class="cat-multi"></div></label>
     <button id="cat-grant-submit" class="cat-tools-action" type="button">この内容を配布</button>
@@ -183,6 +189,10 @@
   const selectedValues=id=>[...$(id).querySelectorAll('input[data-multi-option]:checked')].map(o=>o.value).filter(Boolean);
   const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll(String.fromCharCode(34),'&quot;').replaceAll(String.fromCharCode(39),'&#39;');
   let adminMissions=[],adminCatalog={characters:[],stages:[]},cardCatalog=[];
+  let pendingAdminGrant=null;
+  let pendingSpeedUpRequestId=null;
+  let speedUpTimer=null;
+  let speedUpOriginalFramerate=30;
   function optionsHtml(items,idKey,labelKey,withBlank=false){return (withBlank?'<option value="">選択してください</option>':'')+items.map(x=>'<option value="'+esc(x[idKey])+'">'+esc(x[labelKey])+'</option>').join('');}
   function updateMultiCount(root){
     const selected=root.querySelectorAll('input[data-multi-option]:checked').length;
@@ -450,17 +460,22 @@
       if(!playerId)throw new Error('配布先プレイヤーを選択してください。');
       const xp=Number($('cat-grant-xp').value||0);
       const catChuru=Number($('cat-grant-churu').value||0);
+      const rainbowStars=Number($('cat-grant-rainbow-stars').value||0);
+      const items={catmax:Number($('cat-grant-catmax').value||0),speed_up:Number($('cat-grant-speed-up').value||0)};
       const characterIds=selectedValues('cat-grant-characters');
       const stageIds=selectedValues('cat-grant-stages');
       const chapterIds=selectedValues('cat-grant-chapters');
       const externalRewardIds=selectedValues('cat-grant-external-rewards');
-      if(!(xp>0||catChuru>0||characterIds.length||stageIds.length||chapterIds.length||externalRewardIds.length))
-        throw new Error('配布する経験値・CATチュール・キャラクター・報酬・ステージ・章を1つ以上指定してください。');
+      const hasItems=Object.values(items).some(value=>value>0);
+      if(!(xp>0||catChuru>0||rainbowStars>0||hasItems||characterIds.length||stageIds.length||chapterIds.length||externalRewardIds.length))
+        throw new Error('配布する経験値・CATチュール・虹星・アイテム・キャラクター・報酬・ステージ・章を1つ以上指定してください。');
+      const signature=JSON.stringify({playerId,xp,catChuru,rainbowStars,items,characterIds,stageIds,chapterIds,externalRewardIds});
+      if(!pendingAdminGrant||pendingAdminGrant.signature!==signature)pendingAdminGrant={signature,requestId:createRequestId()};
       button.disabled=true;
       button.textContent='配布中…';
       const result=await api('/api/admin/grants',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({playerId,xp,catChuru,characterIds,stageIds,chapterIds,externalRewardIds})
+        body:JSON.stringify({playerId,xp,catChuru,rainbowStars,items,characterIds,stageIds,chapterIds,externalRewardIds,requestId:pendingAdminGrant.requestId})
       });
       const updated=await api('/api/admin/players');
       const selectedPlayer=updated.players.find(x=>x.id===playerId);
@@ -472,15 +487,23 @@
         );
         $('cat-admin-player').value=keep;
       }
+      pendingAdminGrant=null;
       $('cat-grant-xp').value='0';
       $('cat-grant-churu').value='0';
+      $('cat-grant-rainbow-stars').value='0';
+      $('cat-grant-catmax').value='0';
+      $('cat-grant-speed-up').value='0';
       clearMultiSelect('cat-grant-characters');
       clearMultiSelect('cat-grant-stages');
       clearMultiSelect('cat-grant-chapters');
       clearMultiSelect('cat-grant-external-rewards');
       toolsError.textContent='配布成功：'+(selectedPlayer?.username||'選択プレイヤー')+
+        (result.alreadyApplied?' / 同じ配布要求は適用済み':'')+
         ' / 経験値 +'+result.added.xp+
         ' / CATチュール +'+result.added.catChuru+
+        ' / 虹星 +'+Number(result.added.rainbowStars||0)+
+        ' / CATMAX +'+Number(result.added.items?.catmax||0)+
+        ' / スピードアップ +'+Number(result.added.items?.speed_up||0)+
         ' / キャラクター '+result.added.characterIds.length+'体'+
         ' / 個別ステージ '+result.added.stageIds.length+'件'+
         ' / 章選択で開放した章 '+(result.added.chapterIds||[]).map(id=>'第'+id+'章').join('・')+'（'+(result.added.chapterIds||[]).length+'章）'+
@@ -491,6 +514,17 @@
       button.disabled=false;
       button.textContent='この内容を配布';
     }
+  });
+  $('cat-missions-refresh').addEventListener('click',async()=>{
+    const button=$('cat-missions-refresh'),before=button.textContent;
+    button.disabled=true;button.textContent='再確認中…';
+    try{
+      await loadPlayerMissions();
+      await refreshPlayerWallet();
+      toolsError.textContent='報酬状況を再確認しました。受取済み・受取待ちの状態を更新しています。';
+    }catch(e){
+      toolsError.textContent='報酬状況を更新できませんでした：'+e.message;
+    }finally{button.disabled=false;button.textContent=before;}
   });
   $('cat-mission-add').addEventListener('click',async()=>{try{const stageId=$('cat-mission-stage-input').value,stage=adminCatalog.stages.find(x=>x.id===stageId),title=$('cat-mission-title-input').value.trim();if(!stage||!title)throw new Error('ミッション名と対象ステージを選んでください。');adminMissions.push({id:'mission-'+Date.now().toString(36),title,type:'stage_win',stageId,stageName:stage.name,description:'ステージ「'+stage.name+'」に勝利する',rewards:{xp:Number($('cat-mission-xp-input').value||0),catChuru:Number($('cat-mission-churu-input').value||0),characterIds:selectedValues('cat-mission-characters-input'),externalRewardIds:selectedValues('cat-mission-external-rewards-input'),stageIds:selectedValues('cat-mission-stages-input')}});await saveAdminMissions();$('cat-mission-title-input').value='';toolsError.textContent='ミッションを追加しました。';}catch(e){toolsError.textContent='ミッション保存に失敗しました：'+e.message;}});
 
@@ -506,23 +540,52 @@
     adminMode.classList.toggle('active',mode==='admin');
     labels();error.textContent='';
   }
+  const createRequestId=()=>globalThis.crypto?.randomUUID?.()||('r-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
   async function api(url,options={}){
-    let res;
-    try{
-      res=await fetch(url,{credentials:'same-origin',cache:'no-store',...options});
-    }catch(e){
-      throw new Error('サーバーに接続できません。Cloudflare Worker上のゲームURLから開いてください。');
+    const method=String(options.method||'GET').toUpperCase();
+    let retryable=method==='GET'||url==='/api/missions/complete'||url==='/api/terra-reward/pending'||url==='/api/terra-reward/ack'||url==='/api/items/use';
+    if(url==='/api/admin/grants'&&method==='POST'){
+      try{retryable=!!JSON.parse(options.body||'{}').requestId;}catch{retryable=false;}
     }
-    const type=res.headers.get('content-type')||'';
-    if(!type.includes('application/json')){
-      if(location.hostname.endsWith('github.io')){
-        throw new Error('このページはGitHub Pagesで開かれています。GitHub Pagesではログイン・配布APIが動きません。Cloudflare WorkerのURLから開く必要があります。');
+    let lastError=null;
+    for(let attempt=0;attempt<(retryable?3:1);attempt++){
+      let res;
+      try{
+        res=await fetch(url,{credentials:'same-origin',cache:'no-store',...options});
+      }catch(e){
+        lastError=e;
+        if(attempt<(retryable?2:0)){await new Promise(resolve=>setTimeout(resolve,attempt===0?350:800));continue;}
+        throw new Error('サーバー接続が切れました。安全な操作だけ再試行しましたが、まだ確認できません。通信状態を確認して再確認してください。');
       }
-      throw new Error('Cloudflare Worker APIが応答していません（HTTP '+res.status+'）。');
+      if([429,502,503,504].includes(res.status)&&attempt<(retryable?2:0)){
+        await new Promise(resolve=>setTimeout(resolve,attempt===0?350:800));
+        continue;
+      }
+      const type=res.headers.get('content-type')||'';
+      if(!type.includes('application/json')){
+        if(location.hostname.endsWith('github.io')){
+          throw new Error('このページはGitHub Pagesで開かれています。GitHub Pagesではログイン・配布APIが動きません。Cloudflare WorkerのURLから開く必要があります。');
+        }
+        throw new Error('Cloudflare Worker APIがJSONを返しません（HTTP '+res.status+'）。');
+      }
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(data.error||'通信に失敗しました（HTTP '+res.status+'）。');
+      return data;
     }
-    const data=await res.json().catch(()=>({}));
-    if(!res.ok)throw new Error(data.error||'通信に失敗しました（HTTP '+res.status+'）。');
-    return data;
+    throw new Error(lastError?.message||'通信を確認できませんでした。');
+  }
+  async function refreshPlayerWallet(){
+    if(auth?.role!=='player')return;
+    const data=await api('/api/me');
+    const profile=data.profile||{};
+    $('cat-player-wallet').hidden=false;
+    $('cat-player-rainbow-stars').textContent=String(Number(profile.rainbowStars||0));
+    $('cat-player-catmax').textContent=String(Number(profile.items?.catmax||0));
+    const speedCount=Number(profile.items?.speed_up||0);
+    const speedButton=$('cat-speedup-use');
+    speedButton.hidden=false;
+    speedButton.disabled=speedCount<1||!!speedUpTimer;
+    speedButton.textContent=speedUpTimer?'⚡ 加速中':'⚡ スピードアップ ×'+speedCount;
   }
   function bootError(message){
     clearInterval(bootPoll);clearTimeout(bootTimer);
@@ -807,8 +870,21 @@
     ownedList.value=mergedCodes;
     xpEntry.value=xp;
     churuEntry.value=catChuru;
-    const nextProfile={...profile,xp,catChuru,owned};
-    const saved=await api('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:nextProfile})});
+    const levelList=getScratchEntry(stage,'CAT軍団のレベルセーブ用',true);
+    const allyOrder=getScratchEntry(stage,'味方',true);
+    const nextLevels={...(profile.levels||{})};
+    if(levelList&&allyOrder){
+      for(let i=0;i<allyOrder.value.length;i++){
+        const id=idByCode.get(String(allyOrder.value[i]));
+        if(!id)continue;
+        while(levelList.value.length<=i)levelList.value.push(1);
+        const level=Math.max(1,Math.min(100,Math.floor(Number(levelList.value[i])||1),Number(nextLevels[id]||1)));
+        levelList.value[i]=String(level);
+        nextLevels[id]=level;
+      }
+    }
+    const nextProfile={...profile,xp,catChuru,owned,levels:nextLevels};
+    const saved=await api('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:nextProfile,expectedProfile:me.profile,expectedProfileExists:me.profileExists!==false})});
     w.__CAT_PROFILE_SYNCED=true;
     w.__CAT_PROFILE_UPDATED_AT=Number(saved.updatedAt||me.updatedAt||0);
     w.__CAT_PROFILE_LAST=JSON.stringify({xp,catChuru,owned});
@@ -858,8 +934,19 @@
       churuEntry.value=catChuru;
       const snapshot=JSON.stringify({xp,catChuru,owned});
       if(snapshot===w.__CAT_PROFILE_LAST&&Number(me.updatedAt||0)===Number(w.__CAT_PROFILE_UPDATED_AT||0))return;
-      const nextProfile={...remoteProfile,xp,catChuru,owned};
-      const saved=await api('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:nextProfile})});
+      const levelList=getScratchEntry(stage,'CAT軍団のレベルセーブ用',true);
+      const allyOrder=getScratchEntry(stage,'味方',true);
+      const nextLevels={...(remoteProfile.levels||{})};
+      if(levelList&&allyOrder){
+        for(let i=0;i<allyOrder.value.length;i++){
+          const id=idByCode.get(String(allyOrder.value[i]));
+          if(!id)continue;
+          const localLevel=Math.max(1,Math.min(100,Math.floor(Number(levelList.value[i])||1)));
+          nextLevels[id]=Math.max(localLevel,Number(nextLevels[id]||1));
+        }
+      }
+      const nextProfile={...remoteProfile,xp,catChuru,owned,levels:nextLevels};
+      const saved=await api('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:nextProfile,expectedProfile:me.profile,expectedProfileExists:me.profileExists!==false})});
       w.__CAT_PROFILE_UPDATED_AT=Number(saved.updatedAt||me.updatedAt||0);
       w.__CAT_PROFILE_LAST=snapshot;
     }catch(error){console.warn('CAT profile sync failed:',error);}
@@ -1007,10 +1094,37 @@
       $('cat-user-name').textContent=auth.username;
       $('cat-user-role').textContent=auth.role==='admin'?'運営アカウント':'プレイヤー';
       userHomebar.hidden=false;
+      if(auth?.role==='player')refreshPlayerWallet().catch(e=>console.warn('CAT wallet refresh:',e));
       window.dispatchEvent(new CustomEvent('CAT_GAME_STARTED',{detail:auth}));
     }catch(e){startError.textContent='ゲームを開始できませんでした：'+(e&&e.message||e);}
   });
 
+  $('cat-speedup-use').addEventListener('click',async()=>{
+    const button=$('cat-speedup-use'),w=frame.contentWindow,vm=w?.scaffolding?.vm;
+    if(typeof vm?.setFramerate!=='function'){
+      toolsError.textContent='このゲーム環境ではスピードアップを使えません。ゲームを開き直して再確認してください。';
+      return;
+    }
+    button.disabled=true;
+    try{
+      pendingSpeedUpRequestId=pendingSpeedUpRequestId||createRequestId();
+      await api('/api/items/use',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({itemId:'speed_up',requestId:pendingSpeedUpRequestId})});
+      pendingSpeedUpRequestId=null;
+      speedUpOriginalFramerate=Number(vm.runtime?.frameLoop?.framerate||vm.runtime?.framerate||30);
+      vm.setFramerate(Math.min(60,Math.max(30,speedUpOriginalFramerate*2)));
+      if(speedUpTimer)clearTimeout(speedUpTimer);
+      speedUpTimer=setTimeout(()=>{
+        try{if(frame.contentWindow===w&&w.scaffolding?.vm?.setFramerate)w.scaffolding.vm.setFramerate(speedUpOriginalFramerate);}catch(e){console.warn('CAT speed-up restore:',e);}
+        speedUpTimer=null;
+        refreshPlayerWallet().catch(e=>console.warn('CAT wallet refresh:',e));
+      },20000);
+      button.textContent='⚡ 加速中';
+      await refreshPlayerWallet();
+    }catch(e){
+      toolsError.textContent='スピードアップを使用できませんでした：'+e.message;
+      await refreshPlayerWallet().catch(()=>{});
+    }finally{if(!speedUpTimer)button.disabled=false;}
+  });
   playerMode.addEventListener('click',()=>setMode('player'));
   adminMode.addEventListener('click',()=>setMode('admin'));
   toggle.addEventListener('click',()=>{registering=!registering;labels();error.textContent='';});
