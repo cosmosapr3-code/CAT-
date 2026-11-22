@@ -926,26 +926,13 @@
     ownedList.value=mergedCodes;
     xpEntry.value=xp;
     churuEntry.value=catChuru;
-    const levelList=getScratchEntry(stage,'CAT軍団のレベルセーブ用',true);
-    const allyOrder=getScratchEntry(stage,'味方',true);
-    const nextLevels={...(profile.levels||{})};
-    if(levelList&&allyOrder){
-      for(let i=0;i<allyOrder.value.length;i++){
-        const id=idByCode.get(String(allyOrder.value[i]));
-        if(!id)continue;
-        while(levelList.value.length<=i)levelList.value.push(1);
-        const localLevel=Math.floor(Number(levelList.value[i])||1);
-        const savedLevel=Math.floor(Number(nextLevels[id]||1));
-        const level=Math.max(1,Math.min(100,Math.max(localLevel,savedLevel)));
-        levelList.value[i]=String(level);
-        nextLevels[id]=level;
-      }
-    }
-    const nextProfile={...profile,xp,catChuru,owned,levels:nextLevels};
+    // Do not map the 20-entry legacy save list onto the 40-entry ally roster.
+    // The original Scratch upgrade system uses a separate 30-slot level list.
+    const nextProfile={...profile,xp,catChuru,owned};
     const saved=await api('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:nextProfile,expectedProfile:me.profile,expectedProfileExists:me.profileExists!==false})});
     w.__CAT_PROFILE_SYNCED=true;
     w.__CAT_PROFILE_UPDATED_AT=Number(saved.updatedAt||me.updatedAt||0);
-    w.__CAT_PROFILE_LAST=JSON.stringify({xp,catChuru,owned,levels:nextLevels});
+    w.__CAT_PROFILE_LAST=JSON.stringify({xp,catChuru,owned});
     return {xp,catChuru,ownedCount:owned.length};
   }
   async function saveScratchPlayerProfile(w){
@@ -976,8 +963,7 @@
       const remoteChanged=Number(me.updatedAt||0)!==Number(w.__CAT_PROFILE_UPDATED_AT||0)||
         (last.xp!==undefined&&Number(remoteProfile.xp||0)!==Number(last.xp))||
         (last.catChuru!==undefined&&Number(remoteProfile.catChuru||0)!==Number(last.catChuru))||
-        (last.owned!==undefined&&JSON.stringify(uniqueStrings(remoteProfile.owned||[]).sort())!==JSON.stringify(uniqueStrings(last.owned||[]).sort()))||
-        (last.levels!==undefined&&JSON.stringify(remoteProfile.levels||{})!==JSON.stringify(last.levels||{}));
+        (last.owned!==undefined&&JSON.stringify(uniqueStrings(remoteProfile.owned||[]).sort())!==JSON.stringify(uniqueStrings(last.owned||[]).sort()));
       let xp=Math.max(0,Math.floor(Number(xpEntry.value)||0));
       let catChuru=Math.max(0,Math.floor(Number(churuEntry.value)||0));
       if(remoteChanged){
@@ -991,20 +977,9 @@
       ownedList.value=mergedCodes;
       xpEntry.value=xp;
       churuEntry.value=catChuru;
-      const levelList=getScratchEntry(stage,'CAT軍団のレベルセーブ用',true);
-      const allyOrder=getScratchEntry(stage,'味方',true);
-      const nextLevels={...(remoteProfile.levels||{})};
-      if(levelList&&allyOrder){
-        for(let i=0;i<allyOrder.value.length;i++){
-          const id=idByCode.get(String(allyOrder.value[i]));
-          if(!id)continue;
-          const localLevel=Math.max(1,Math.min(100,Math.floor(Number(levelList.value[i])||1)));
-          nextLevels[id]=Math.max(localLevel,Number(nextLevels[id]||1));
-        }
-      }
-      const snapshot=JSON.stringify({xp,catChuru,owned,levels:nextLevels});
+      const snapshot=JSON.stringify({xp,catChuru,owned});
       if(snapshot===w.__CAT_PROFILE_LAST&&Number(me.updatedAt||0)===Number(w.__CAT_PROFILE_UPDATED_AT||0))return;
-      const nextProfile={...remoteProfile,xp,catChuru,owned,levels:nextLevels};
+      const nextProfile={...remoteProfile,xp,catChuru,owned};
       const saved=await api('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:nextProfile,expectedProfile:me.profile,expectedProfileExists:me.profileExists!==false})});
       w.__CAT_PROFILE_UPDATED_AT=Number(saved.updatedAt||me.updatedAt||0);
       w.__CAT_PROFILE_LAST=snapshot;
