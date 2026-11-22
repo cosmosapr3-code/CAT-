@@ -2053,27 +2053,39 @@ if (request.method === "GET" && decodeURIComponent(url.pathname) === "/CAT大戦
         for (let attempt = 0; attempt < 80; attempt++) {
           stage = findStage();
           if (stage && findNamed(stage, '経験値') && findNamed(stage, 'catチュール') &&
-              findNamed(stage, 'getto') && findNamed(stage, 'kosu')) break;
+              findNamed(stage, 'catMAX') && findNamed(stage, 'getto') &&
+              findNamed(stage, 'kosu') && findNamed(stage, 'ステージ章')) break;
           await new Promise(resolve => setTimeout(resolve, 150));
         }
         if (!stage) throw new Error('Scratch stage not ready');
         const profile = data.profile;
         const currentXp = Number(findNamed(stage, '経験値')?.value || 0);
         const currentChuru = Number(findNamed(stage, 'catチュール')?.value || 0);
+        const currentCatMax = Number(findNamed(stage, 'catMAX')?.value || 0);
         const serverXp = Math.max(0, Math.floor(Number(profile.xp) || 0));
         const serverChuru = Math.max(0, Math.floor(Number(profile.catChuru) || 0));
+        const serverCatMax = Math.max(0, Math.floor(Number(profile.items?.catmax) || 0));
         // Never reduce an already higher locally saved balance.
         findNamed(stage, '経験値').value = Math.max(currentXp, serverXp);
         findNamed(stage, 'catチュール').value = Math.max(currentChuru, serverChuru);
+        findNamed(stage, 'catMAX').value = Math.max(currentCatMax, serverCatMax);
         const codeById = new Map((data.legacyCharacterCodes || []).map(item => [item.id, String(item.legacyCode)]));
         const ownedCodes = (Array.isArray(profile.owned) ? profile.owned : [])
           .map(id => codeById.get(id)).filter(Boolean);
         mergeList(stage, 'getto', ownedCodes);
         mergeList(stage, 'kosu', ownedCodes);
+        // Operator-opened chapters are separate from stage-clear records.
+        // Merge only into the actual chapter-selection list so users can enter
+        // chapters 2-4 without falsely recording earlier stage victories.
+        const unlockedChapters = (Array.isArray(profile.unlockedChapters) ? profile.unlockedChapters : ['1'])
+          .map(String).filter(id => ['1', '2', '3', '4'].includes(id));
+        mergeList(stage, 'ステージ章', unlockedChapters.length ? unlockedChapters : ['1']);
         window.CAT_PROFILE_SYNCED = true;
         window.CAT_PROFILE_SYNC_RESULT = {
           xp: Math.max(currentXp, serverXp),
           catChuru: Math.max(currentChuru, serverChuru),
+          catmax: Math.max(currentCatMax, serverCatMax),
+          unlockedChapters: unlockedChapters.length ? unlockedChapters : ['1'],
           addedCharacters: ownedCodes.length
         };
         console.info('[CAT] D1 profile synchronized', window.CAT_PROFILE_SYNC_RESULT);
