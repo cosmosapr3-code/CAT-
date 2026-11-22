@@ -339,6 +339,45 @@ summary["focused_stat_lists"] = {
 summary["focused_name_blocks"] = []
 # Capture complete Scratch scripts that reference unit stats, prices, and UI-name values.
 summary["focused_stat_scripts"] = []
+summary["enemy_runtime_settings"] = []
+enemy_target_names = {"z", "Pico", "味方?teki?キャラ"}
+enemy_setting_names = {"移動速度", "射程距離", "射程　味方", "秒数", "HP", "hpoi", "hhpp",
+                       "攻撃間隔", "攻撃速度", "攻撃力", "攻撃", "byousuu", "oto", "okae"}
+for target in targets:
+    if target.get("name", "") not in enemy_target_names:
+        continue
+    blocks = target.get("blocks", {})
+    roots = set()
+    for block_id, block in blocks.items():
+        if not isinstance(block, dict):
+            continue
+        matched = False
+        for value in block.get("fields", {}).values():
+            if isinstance(value, list) and value and value[0] in enemy_setting_names:
+                matched = True
+        if matched:
+            current = block
+            seen = set()
+            while isinstance(current, dict) and current.get("parent") and current["parent"] not in seen:
+                seen.add(current["parent"])
+                current = blocks.get(current["parent"])
+            if isinstance(current, dict) and current.get("topLevel"):
+                root_id = next((key for key, value in blocks.items() if value is current), block_id)
+                roots.add(root_id)
+    summary["enemy_runtime_settings"].append({
+        "target": target.get("name", ""),
+        "variables": [{"name": v.get("name"), "value": v.get("value")}
+                      for v in target.get("variables", {}).values()
+                      if isinstance(v, dict) and v.get("name") in enemy_setting_names],
+        "lists": [{"name": v[0], "count": len(v[1]), "sample": v[1][:60]}
+                  for v in target.get("lists", {}).values()
+                  if v and v[0] in enemy_setting_names],
+        "scripts": [{"root": root_id, "blocks": [{
+            "id": bid, "opcode": block.get("opcode", ""),
+            "fields": block.get("fields", {}), "inputs": block.get("inputs", {}),
+            "next": block.get("next"), "parent": block.get("parent")
+        } for bid, block in block_tree(blocks, root_id)]} for root_id in sorted(roots)]
+    })
 summary["focused_panel_procedures"] = []
 summary["focused_gacha_name_strings"] = []
 for target in targets:
