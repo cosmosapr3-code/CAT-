@@ -719,7 +719,19 @@ async function handleApi(request, env) {
     if (!username) return json({ error: "TERRACARDのユーザー名を確認できませんでした。" }, 401);
     const db = getDb(env);
     const catUser = await db.prepare("SELECT id, username FROM users WHERE username = ? COLLATE NOCASE").bind(username).first();
-    if (!catUser) return json({ ok: true, username, deliveries: [] });
+    if (!catUser) return json({
+      ok: true, username, deliveries: [],
+      missions: [{
+        id: FIXED_TERRA_MISSION.id,
+        title: FIXED_TERRA_MISSION.title,
+        description: FIXED_TERRA_MISSION.description,
+        stageName: FIXED_TERRA_MISSION.stageName,
+        done: false,
+        linked: false,
+        rewardName: EXTERNAL_REWARD_CATALOG[0].name,
+        rewardStatus: "account_not_found"
+      }]
+    });
     const config = await loadConfig(env, request);
     const data = await readProfileForUser(db, catUser.id, config);
     const missions = await loadMissions(env, request);
@@ -730,9 +742,24 @@ async function handleApi(request, env) {
       }
     }
     const deliveries = await getTerraRewardDeliveryStatus(db, catUser.id, request);
+    const fixedMissionDone = data.profile.completedMissions.includes(FIXED_TERRA_MISSION.id);
+    const fixedRewardDelivery = deliveries.find(item =>
+      item.missionId === FIXED_TERRA_MISSION.id &&
+      item.rewardId === "external-reward-cat-kanzen"
+    );
     return json({
       ok: true,
       username,
+      missions: [{
+        id: FIXED_TERRA_MISSION.id,
+        title: FIXED_TERRA_MISSION.title,
+        description: FIXED_TERRA_MISSION.description,
+        stageName: FIXED_TERRA_MISSION.stageName,
+        done: fixedMissionDone,
+        linked: true,
+        rewardName: EXTERNAL_REWARD_CATALOG[0].name,
+        rewardStatus: fixedRewardDelivery?.status || (fixedMissionDone ? "pending" : "locked")
+      }],
       deliveries: deliveries.filter(item => item.status === "claimable" && item.claimUrl)
     });
   }
