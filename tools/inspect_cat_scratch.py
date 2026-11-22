@@ -331,11 +331,11 @@ for target in targets:
         except Exception:
             continue
         found = []
-        for match in re.findall(r"<(?:text|tspan|title|desc)\\b[^>]*>(.*?)</(?:text|tspan|title|desc)>", svg, re.S | re.I):
+        for match in re.findall(r"<(?:text|tspan|title|desc)\b[^>]*>(.*?)</(?:text|tspan|title|desc)>", svg, re.S | re.I):
             value = html_lib.unescape(re.sub(r"<[^>]+>", "", match)).strip()
             if value and re.search(r"[ぁ-んァ-ヶ一-龠]", value):
                 found.append(value)
-        for value in re.findall(r'(?:aria-label|data-name|inkscape:label)=["\\']([^"\\']+)["\\']', svg):
+        for value in re.findall(r"""(?:aria-label|data-name|inkscape:label)=["']([^"']+)["']""", svg):
             value = html_lib.unescape(value).strip()
             if value and re.search(r"[ぁ-んァ-ヶ一-龠]", value):
                 found.append(value)
