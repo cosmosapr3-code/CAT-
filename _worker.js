@@ -182,6 +182,10 @@ function getDb(env) {
   return env.DB;
 }
 
+const CAT_ITEM_CATALOG = [
+  { id: "catmax", name: "CATMAX" },
+  { id: "speed_up", name: "スピードアップ" }
+];
 function validateProfile(p) {
   if (!p || typeof p !== "object" || Array.isArray(p)) return null;
   const ids = (value, limit = 500) => [...new Set((Array.isArray(value) ? value : []).filter(x => typeof x === "string" && x.length > 0 && x.length <= 120))].slice(0, limit);
@@ -193,21 +197,41 @@ function validateProfile(p) {
   const formsIn = p.forms && typeof p.forms === "object" && !Array.isArray(p.forms) ? p.forms : {};
   const forms = {};
   for (const [id, value] of Object.entries(formsIn).slice(0, 100)) forms[id] = Math.max(1, Math.min(3, Math.floor(Number(value) || 1)));
+  const itemsIn = p.items && typeof p.items === "object" && !Array.isArray(p.items) ? p.items : {};
+  const items = {};
+  for (const item of CAT_ITEM_CATALOG) items[item.id] = Math.max(0, Math.min(1000000000, Math.floor(Number(itemsIn[item.id]) || 0)));
+  const unlockedChapters = [...new Set(["1", ...ids(p.unlockedChapters, 4).filter(id => ["1", "2", "3", "4"].includes(id))])].slice(0, 4);
+  const adminUnlockedChapters = (Array.isArray(p.adminUnlockedChapters)
+    ? ids(p.adminUnlockedChapters, 4)
+    : unlockedChapters.filter(id => id !== "1"))
+    .filter(id => unlockedChapters.includes(id)).slice(0, 3);
   return {
     catChuru: Math.max(0, Math.min(1000000000, Math.floor(Number(p.catChuru) || 0))),
     xp: Math.max(0, Math.min(1000000000, Math.floor(Number(p.xp) || 0))),
+    rainbowStars: Math.max(0, Math.min(1000000000, Math.floor(Number(p.rainbowStars) || 0))),
+    items,
     owned, team, levels, forms, enemyBook: ids(p.enemyBook, 200),
     completedMissions: ids(p.completedMissions, 1000),
     ownedCards: ids(p.ownedCards, 1000),
     ownedExternalRewards: ids(p.ownedExternalRewards, 1000),
     unlockedStages: ids(p.unlockedStages, 500),
-    unlockedChapters: [...new Set(["1", ...ids(p.unlockedChapters, 4).filter(id => ["1", "2", "3", "4"].includes(id))])].slice(0, 4)
+    unlockedChapters,
+    adminUnlockedChapters,
+    clearedStages: ids(p.clearedStages, 500),
+    appliedGrantIds: ids(p.appliedGrantIds, 100),
+    usedItemRequests: ids(p.usedItemRequests, 100)
   };
 }
 function starterProfile(config) {
   return {
     catChuru: Number(config.economy?.startingCatChuru ?? 1330),
     xp: Number(config.economy?.startingXp ?? 1250),
+    rainbowStars: 0,
+    items: { catmax: 0, speed_up: 0 },
+    appliedGrantIds: [],
+    usedItemRequests: [],
+    clearedStages: [],
+    adminUnlockedChapters: [],
     owned: ["cat-basic", "cat-guard"],
     team: ["cat-basic", "cat-guard"],
     levels: {
@@ -499,7 +523,7 @@ function checkSameOrigin(request) {
 const EXTERNAL_REWARD_CATALOG = [{
   id: "external-reward-cat-kanzen",
   name: "CAT完全体",
-  image: "/assets/cards/cat-kanzen-hd.webp",
+  image: "/assets/cards/cat-kanzen.webp",
   description: "別ゲーム用カード報酬。CAT大戦争の戦闘では使用しません。",
   originalEffect: "scratch属性のカードを2枚ずつ加え、コストを0にして効果を10倍にする。相手に10ダメージ、50%で自分に5ダメージ"
 }];
@@ -1058,11 +1082,13 @@ async function handleApi(request, env) {
     } catch {
       profile = starterProfile(config);
     }
+    profile = validateProfile(profile) || starterProfile(config);
 
     return json({
       role: "player",
       username: s.username,
       profile,
+      profileExists: Boolean(row?.profile_json),
       updatedAt: Number(row?.updated_at || 0),
       // Only the small ID-to-Scratch-code mapping is sent to the game bridge;
       // never send the image/frame payload in the profile response.
@@ -1093,20 +1119,44 @@ async function handleApi(request, env) {
     }
 
     const profileUpdatedAt = nowSeconds();
-    await getDb(env).prepare(
-      `INSERT INTO profiles
-       (user_id, profile_json, updated_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET
-       profile_json = excluded.profile_json,
-       updated_at = excluded.updated_at`
-    ).bind(
-      auth.session.user_id,
-      JSON.stringify(profile),
-      profileUpdatedAt
-    ).run();
+    const db = getDb(env);
+    const encoded = JSON.stringify(profile);
+    if (Object.prototype.hasOwnProperty.call(body, "expectedProfile")) {
+      const current = await db.prepare(
+        "SELECT profile_json FROM profiles WHERE user_id = ?"
+      ).bind(auth.session.user_id).first();
+      const expectedExists = body.expectedProfileExists !== false;
+      const expectedJson = JSON.stringify(body.expectedProfile);
+      if (expectedExists) {
+        if (!current?.profile_json || current.profile_json !== expectedJson) {
+          return json({ error: "プロフィールが更新されました。最新データを読み直してください。", code: "PROFILE_CONFLICT" }, 409);
+        }
+        const updated = await db.prepare(
+          "UPDATE profiles SET profile_json = ?, updated_at = ? WHERE user_id = ? AND profile_json = ?"
+        ).bind(encoded, profileUpdatedAt, auth.session.user_id, current.profile_json).run();
+        if (!updated.meta?.changes) {
+          return json({ error: "プロフィールが同時に更新されました。最新データを読み直してください。", code: "PROFILE_CONFLICT" }, 409);
+        }
+      } else {
+        const inserted = await db.prepare(
+          "INSERT OR IGNORE INTO profiles (user_id, profile_json, updated_at) VALUES (?, ?, ?)"
+        ).bind(auth.session.user_id, encoded, profileUpdatedAt).run();
+        if (!inserted.meta?.changes) {
+          return json({ error: "プロフィールが同時に作成されました。最新データを読み直してください。", code: "PROFILE_CONFLICT" }, 409);
+        }
+      }
+    } else {
+      await db.prepare(
+        `INSERT INTO profiles
+         (user_id, profile_json, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET
+         profile_json = excluded.profile_json,
+         updated_at = excluded.updated_at`
+      ).bind(auth.session.user_id, encoded, profileUpdatedAt).run();
+    }
 
-    return json({ ok: true, profile, updatedAt: profileUpdatedAt });
+    return json({ ok: true, profile, updatedAt: profileUpdatedAt, profileExists: true });
   }
 
   // ゲーム設定取得
@@ -1219,6 +1269,7 @@ async function handleApi(request, env) {
     return json({
       characters: (config.characters || []).filter(c => c.side === "ally").map(c => ({ id: c.id, name: resolveCharacterDisplayName(c), legacyCode: c.legacyCode || "" })),
       enemies: (config.characters || []).filter(c => c.side === "enemy").map(c => ({ id: c.id, name: resolveCharacterDisplayName(c), legacyCode: c.legacyCode || "" })),
+      items: CAT_ITEM_CATALOG.map(item => ({ id: item.id, name: item.name })),
       allCharacters: (config.characters || []).map(c => ({
         id: c.id, name: resolveCharacterDisplayName(c), side: c.side,
         legacyCode: c.legacyCode || "", displayName: c.displayName || "",
@@ -1450,22 +1501,47 @@ async function handleApi(request, env) {
       return Boolean(m.stageName && stageAliases.includes(norm(m.stageName)));
     });
     if (!eligible.length) return json({ ok: true, completed: [], message: "このステージに対応するミッションはありません。" });
-    const db = getDb(env), data = await readProfileForUser(db, auth.session.user_id, config), completed = [];
-    for (const mission of eligible) {
-      if (data.profile.completedMissions.includes(mission.id)) continue;
-      const reward = mission.rewards || {};
-      data.profile.xp = boundedInt(data.profile.xp + boundedInt(reward.xp));
-      data.profile.catChuru = boundedInt(data.profile.catChuru + boundedInt(reward.catChuru));
-      for (const id of safeStringIds(reward.characterIds, 100)) {
-        if (!(config.characters || []).some(c => c.id === id && c.side === "ally")) continue;
-        if (!data.profile.owned.includes(id)) data.profile.owned.push(id);
-        data.profile.levels[id] = Math.max(1, Number(data.profile.levels[id] || 1));
+    const db = getDb(env);
+    let data = null, completed = [], rainbowStarsGranted = 0, saved = false;
+    for (let attempt = 0; attempt < 4 && !saved; attempt++) {
+      data = await readProfileForUser(db, auth.session.user_id, config);
+      completed = [];
+      rainbowStarsGranted = 0;
+      let changed = false;
+      if (stage.id !== TERRA_STAGE_ID && stage.id !== "external-stage-terra-card" && !data.profile.clearedStages.includes(stage.id)) {
+        data.profile.clearedStages.push(stage.id);
+        data.profile.rainbowStars = boundedInt(data.profile.rainbowStars + 1);
+        rainbowStarsGranted = 1;
+        changed = true;
       }
-      for (const id of safeStringIds(reward.externalRewardIds, 100)) if (EXTERNAL_REWARD_CATALOG.some(item => item.id === id) && !data.profile.ownedExternalRewards.includes(id)) data.profile.ownedExternalRewards.push(id);
-      for (const id of safeStringIds(reward.stageIds, 300)) if ((config.stages || []).some(x => x.id === id) && !data.profile.unlockedStages.includes(id)) data.profile.unlockedStages.push(id);
-      data.profile.completedMissions.push(mission.id); completed.push(mission);
+      for (const mission of eligible) {
+        if (data.profile.completedMissions.includes(mission.id)) continue;
+        const reward = mission.rewards || {};
+        data.profile.xp = boundedInt(data.profile.xp + boundedInt(reward.xp));
+        data.profile.catChuru = boundedInt(data.profile.catChuru + boundedInt(reward.catChuru));
+        for (const id of safeStringIds(reward.characterIds, 100)) {
+          if (!(config.characters || []).some(c => c.id === id && c.side === "ally")) continue;
+          if (!data.profile.owned.includes(id)) data.profile.owned.push(id);
+          data.profile.levels[id] = Math.max(1, Number(data.profile.levels[id] || 1));
+        }
+        for (const id of safeStringIds(reward.externalRewardIds, 100)) if (EXTERNAL_REWARD_CATALOG.some(item => item.id === id) && !data.profile.ownedExternalRewards.includes(id)) data.profile.ownedExternalRewards.push(id);
+        for (const id of safeStringIds(reward.stageIds, 300)) if ((config.stages || []).some(x => x.id === id) && !data.profile.unlockedStages.includes(id)) data.profile.unlockedStages.push(id);
+        data.profile.completedMissions.push(mission.id);
+        completed.push(mission);
+        changed = true;
+      }
+      if (!changed) {
+        saved = true;
+        break;
+      }
+      try {
+        await saveProfileForUser(db, auth.session.user_id, data.profile, data.row?.profile_json ?? null);
+        saved = true;
+      } catch (error) {
+        if (!String(error?.message || error).includes("同時に更新") || attempt === 3) throw error;
+      }
     }
-    await saveProfileForUser(db, auth.session.user_id, data.profile, data.row?.profile_json ?? null);
+    if (!saved || !data) return json({ error: "報酬の保存に失敗しました。再確認してください。" }, 409);
 
     // A previously completed mission may predate the bridge. Queue its external
     // rewards too, then deliver pending entries idempotently to TERRACARD.
@@ -1480,11 +1556,12 @@ async function handleApi(request, env) {
       ok: true,
       completed,
       profile: data.profile,
+      rainbowStarsGranted,
       externalRewards: EXTERNAL_REWARD_CATALOG,
       terraDeliveries
     });
   }
-  // Admin grants currencies, characters, collectible cards and stage unlock flags.
+  // Admin grants currencies, characters, items and stage unlock flags.
   if (path === "/api/admin/grants" && method === "POST") {
     const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
     const body = await request.json().catch(() => ({}));
@@ -1493,22 +1570,33 @@ async function handleApi(request, env) {
     const user = await db.prepare("SELECT id, username FROM users WHERE id = ?").bind(body.playerId).first();
     if (!user) return json({ error: "プレイヤーが見つかりません。", code: "PLAYER_NOT_FOUND" }, 404);
 
-    const xp = boundedInt(body.xp), catChuru = boundedInt(body.catChuru);
+    const xp = boundedInt(body.xp), catChuru = boundedInt(body.catChuru), rainbowStars = boundedInt(body.rainbowStars);
+    const requestedItems = body.items && typeof body.items === "object" && !Array.isArray(body.items) ? body.items : {};
+    const itemCounts = Object.fromEntries(CAT_ITEM_CATALOG.map(item => [item.id, boundedInt(requestedItems[item.id])]));
+    const hasItemGrants = Object.values(itemCounts).some(value => value > 0);
+    const requestId = typeof body.requestId === "string" && /^[A-Za-z0-9_-]{8,100}$/.test(body.requestId) ? body.requestId : "";
     const characterIds = safeStringIds(body.characterIds, 100).filter(id => (config.characters || []).some(c => c.id === id && c.side === "ally"));
     const externalRewardIds = safeStringIds(body.externalRewardIds, 100).filter(id => EXTERNAL_REWARD_CATALOG.some(item => item.id === id));
     const stageIds = safeStringIds(body.stageIds, 300).filter(id => (config.stages || []).some(stage => stage.id === id));
     const chapterIds = safeStringIds(body.chapterIds, 4).filter(id => ["1", "2", "3", "4"].includes(id));
-    if (!xp && !catChuru && !characterIds.length && !externalRewardIds.length && !stageIds.length && !chapterIds.length) {
-      return json({ error: "配布する経験値・CATチュール・キャラクター・報酬・ステージ・章を1つ以上選んでください。", code: "EMPTY_GRANT" }, 400);
+    if (!xp && !catChuru && !rainbowStars && !hasItemGrants && !characterIds.length && !externalRewardIds.length && !stageIds.length && !chapterIds.length) {
+      return json({ error: "配布する経験値・CATチュール・虹星・アイテム・キャラクター・報酬・ステージ・章を1つ以上選んでください。", code: "EMPTY_GRANT" }, 400);
     }
 
-    let savedProfile = null;
-    // 別の保存と重なった場合は最新プロフィールを読み直して配布を再適用する。
+    let savedProfile = null, alreadyApplied = false;
+    // 同じ配布要求IDは一度だけ反映し、接続切れ後の再試行による二重配布を防止する。
     for (let attempt = 0; attempt < 4 && !savedProfile; attempt++) {
       const data = await readProfileForUser(db, body.playerId, config);
       const next = structuredClone(data.profile);
+      if (requestId && next.appliedGrantIds.includes(requestId)) {
+        savedProfile = next;
+        alreadyApplied = true;
+        break;
+      }
       next.xp = boundedInt(next.xp + xp);
       next.catChuru = boundedInt(next.catChuru + catChuru);
+      next.rainbowStars = boundedInt(next.rainbowStars + rainbowStars);
+      for (const item of CAT_ITEM_CATALOG) next.items[item.id] = boundedInt((next.items[item.id] || 0) + itemCounts[item.id]);
       for (const id of characterIds) {
         if (!next.owned.includes(id)) next.owned.push(id);
         next.levels[id] = Math.max(1, Number(next.levels[id] || 1));
@@ -1517,10 +1605,12 @@ async function handleApi(request, env) {
       for (const id of stageIds) if (!next.unlockedStages.includes(id)) next.unlockedStages.push(id);
       for (const id of chapterIds) {
         if (!next.unlockedChapters.includes(id)) next.unlockedChapters.push(id);
+        if (!next.adminUnlockedChapters.includes(id)) next.adminUnlockedChapters.push(id);
       }
+      if (requestId) next.appliedGrantIds = [...next.appliedGrantIds, requestId].slice(-100);
       try {
         await saveProfileForUser(db, body.playerId, next, data.row?.profile_json ?? null);
-        savedProfile = next;
+        savedProfile = validateProfile(next);
       } catch (error) {
         if (!String(error?.message || error).includes("同時に更新") || attempt === 3) {
           console.error("Admin grant save failed:", error);
@@ -1545,10 +1635,45 @@ async function handleApi(request, env) {
       : [];
     return json({
       ok: true, playerId: body.playerId,
-      added: { xp, catChuru, characterIds, externalRewardIds, stageIds, chapterIds },
+      added: { xp, catChuru, rainbowStars, items: itemCounts, characterIds, externalRewardIds, stageIds, chapterIds },
+      alreadyApplied,
       profile: savedProfile,
       terraDeliveries
     });
+  }
+
+  // バトルアイテムは要求IDを記録し、接続切れ後の再試行でも二重消費しない。
+  if (path === "/api/items/use" && method === "POST") {
+    const auth = await requireSession(request, env);
+    if (auth.error) return auth.error;
+    if (auth.session.role !== "player") return json({ error: "プレイヤーでログインしてください。" }, 403);
+    const body = await request.json().catch(() => ({}));
+    const itemId = String(body.itemId || "");
+    const requestId = String(body.requestId || "");
+    if (itemId !== "speed_up" || !/^[A-Za-z0-9_-]{8,100}$/.test(requestId)) {
+      return json({ error: "使用するアイテムまたは要求IDが正しくありません。" }, 400);
+    }
+    const config = await loadConfig(env, request), db = getDb(env);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const data = await readProfileForUser(db, auth.session.user_id, config);
+      if (data.profile.usedItemRequests.includes(requestId)) {
+        return json({ ok: true, alreadyUsed: true, profile: data.profile });
+      }
+      if (Number(data.profile.items.speed_up || 0) < 1) {
+        return json({ error: "スピードアップを持っていません。" }, 400);
+      }
+      data.profile.items.speed_up -= 1;
+      data.profile.usedItemRequests = [...data.profile.usedItemRequests, requestId].slice(-100);
+      try {
+        await saveProfileForUser(db, auth.session.user_id, data.profile, data.row?.profile_json ?? null);
+        return json({ ok: true, alreadyUsed: false, profile: validateProfile(data.profile) });
+      } catch (error) {
+        if (!String(error?.message || error).includes("同時に更新") || attempt === 3) {
+          return json({ error: "アイテムを使用できませんでした。再確認してください。" }, 409);
+        }
+      }
+    }
+    return json({ error: "アイテムの使用が競合しました。再確認してください。" }, 409);
   }
 
   // ガチャ
@@ -1703,6 +1828,8 @@ async function handleApi(request, env) {
         username: row.username,
         catChuru: Number(p.catChuru || 0),
         xp: Number(p.xp || 0),
+        rainbowStars: Number(p.rainbowStars || 0),
+        items: p.items && typeof p.items === "object" ? p.items : {},
         ownedCount: Array.isArray(p.owned) ? p.owned.length : 0,
         externalRewardCount: Array.isArray(p.ownedExternalRewards) ? p.ownedExternalRewards.length : 0,
         unlockedStageCount: Array.isArray(p.unlockedStages) ? p.unlockedStages.length : 0,
