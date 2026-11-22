@@ -238,6 +238,8 @@ for target in targets:
 
 # Produce contact sheets from the original costume art so names can be
 # matched to the actual in-game characters instead of guessing from sprite IDs.
+# The initial project.json read closes its ZipFile context, so reopen the archive.
+archive = zipfile.ZipFile(io.BytesIO(archive_bytes))
 def costume_rgba(target_name, costume_name):
     target = next((t for t in targets if t.get("name") == target_name), None)
     if not target:
