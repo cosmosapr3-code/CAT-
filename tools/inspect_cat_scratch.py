@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import json, re, struct, sys, zipfile, zlib, io
+from PIL import Image, ImageDraw
+import cairosvg
 from pathlib import Path
 
 html_path = Path("CAT大戦争_完全版_1ファイル軽量版.html")
@@ -234,4 +236,55 @@ for target in targets:
             } for bid, block in nodes]
         })
 
+# Produce contact sheets from the original costume art so names can be
+# matched to the actual in-game characters instead of guessing from sprite IDs.
+def costume_rgba(target_name, costume_name):
+    target = next((t for t in targets if t.get("name") == target_name), None)
+    if not target:
+        return None
+    costume = next((c for c in target.get("costumes", []) if str(c.get("name", "")) == str(costume_name)), None)
+    if not costume:
+        return None
+    raw = archive.read(costume["md5ext"])
+    try:
+        if costume.get("dataFormat") == "svg":
+            raw = cairosvg.svg2png(bytestring=raw, output_width=180, output_height=180)
+        image = Image.open(io.BytesIO(raw)).convert("RGBA")
+        image.thumbnail((112, 112), Image.Resampling.LANCZOS)
+        return image
+    except Exception:
+        return None
+
+def write_contact_sheet(items, filename, columns=5):
+    cell_w, cell_h = 150, 152
+    rows = (len(items) + columns - 1) // columns
+    sheet = Image.new("RGB", (columns * cell_w, rows * cell_h), (238, 238, 238))
+    draw = ImageDraw.Draw(sheet)
+    for index, (label, target_name, costume_name) in enumerate(items):
+        image = costume_rgba(target_name, costume_name)
+        x = (index % columns) * cell_w
+        y = (index // columns) * cell_h
+        if image:
+            px = x + (cell_w - image.width) // 2
+            py = y + 4 + (112 - image.height) // 2
+            sheet.paste(image, (px, py), image)
+        draw.text((x + 6, y + 118), str(index + 1) + ". " + str(label)[:22], fill=(0, 0, 0))
+    sheet.save(filename, format="PNG", optimize=True)
+
+ally_codes = get_stage_list = next((v[1] for v in stage_target.get("lists", {}).values() if v[0] == "味方"), [])
+write_contact_sheet([(code, "編成表", code) for code in ally_codes], "ally-contact-sheet.png")
+enemy_codes = next((v[1] for v in stage_target.get("lists", {}).values() if v[0] == "teki"), [])
+enemy_items = []
+special_codes = set(enemy_codes[30:48] + [enemy_codes[i] for i in (59, 60, 67, 68) if i < len(enemy_codes)])
+for index, code in enumerate(enemy_codes):
+    if index < 30:
+        source = "z"
+    elif index in list(range(30, 48)) + [59, 60, 67, 68]:
+        source = "味方?teki?キャラ"
+    else:
+        source = "Pico"
+    enemy_items.append((code, source, code))
+write_contact_sheet(enemy_items, "enemy-contact-sheet.png")
+
+summary["contact_sheets"] = ["ally-contact-sheet.png", "enemy-contact-sheet.png"]
 print(json.dumps(summary, ensure_ascii=False, separators=(",", ":")))
