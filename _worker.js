@@ -1566,6 +1566,51 @@ async function handleApi(request, env) {
       terraDeliveries
     });
   }
+  // 運営用：TERRACARD連携報酬の未受取・配達状況を読み取り専用で確認する。
+  if (path === "/api/admin/terra-rewards" && method === "GET") {
+    const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
+    const rows = await getDb(env).prepare(`
+      SELECT d.event_id, d.username, d.mission_id, d.reward_id, d.payload_json,
+             d.status, d.last_error, d.attempts, d.created_at, d.updated_at, d.delivered_at,
+             c.status AS claim_status, c.claim_token
+      FROM terra_reward_deliveries d
+      LEFT JOIN terra_reward_claims c ON c.event_id = d.event_id
+      ORDER BY d.created_at DESC
+      LIMIT 100
+    `).all();
+    const items = (rows.results || []).map(row => {
+      let payload = {};
+      try { payload = JSON.parse(row.payload_json || "{}"); } catch {}
+      const delivered = row.status === "delivered" || row.claim_status === "claimed";
+      const claimable = !delivered && row.claim_status === "pending" && !!row.claim_token;
+      return {
+        eventId: row.event_id,
+        username: row.username,
+        missionId: row.mission_id,
+        missionTitle: String(payload.missionTitle || row.mission_id || ""),
+        rewardId: row.reward_id,
+        rewardName: String(payload.reward?.name || row.reward_id || ""),
+        status: delivered ? "delivered" : (claimable ? "claimable" : "needs_attention"),
+        statusLabel: delivered ? "受取済み" : (claimable ? "TERRACARDで受取待ち" : "要確認"),
+        lastError: String(row.last_error || ""),
+        attempts: Number(row.attempts || 0),
+        createdAt: Number(row.created_at || 0),
+        updatedAt: Number(row.updated_at || 0),
+        deliveredAt: row.delivered_at ? Number(row.delivered_at) : null
+      };
+    });
+    return json({
+      ok: true,
+      items,
+      counts: {
+        total: items.length,
+        delivered: items.filter(item => item.status === "delivered").length,
+        claimable: items.filter(item => item.status === "claimable").length,
+        needsAttention: items.filter(item => item.status === "needs_attention").length
+      }
+    });
+  }
+
   // Admin grants currencies, characters, items and stage unlock flags.
   if (path === "/api/admin/grants" && method === "POST") {
     const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
