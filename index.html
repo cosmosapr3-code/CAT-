@@ -414,6 +414,111 @@
       entry&&entry.name===name&&Array.isArray(entry.value)===wantList
     )||null;
   }
+  const scratchTargets=w=>(w?.Scratch?.vm||w?.scaffolding?.vm)?.runtime?.targets||[];
+  const scratchTargetByName=(w,name)=>scratchTargets(w).find(t=>
+    t&&(t.sprite?.name===name||t.getName?.()===name||t.name===name)
+  )||null;
+  const scratchList=(target,name)=>Object.values(target?.variables||{}).find(v=>v&&v.name===name&&Array.isArray(v.value))||null;
+  const scratchScalar=(target,name)=>Object.values(target?.variables||{}).find(v=>v&&v.name===name&&!Array.isArray(v.value))||null;
+  const scratchIndex=(values,code)=>Array.isArray(values)?values.findIndex(v=>String(v)===String(code)):-1;
+  function setScratchListValue(list,index,value,extend=false){
+    if(!list||!Array.isArray(list.value)||index<0)return false;
+    if(extend)while(list.value.length<=index)list.value.push(0);
+    if(index>=list.value.length)return false;
+    list.value[index]=String(value);
+    return true;
+  }
+  function blockInputChild(blocks,input){
+    if(!input)return null;
+    const id=input.shadow||input.block||input.shadowId||input.blockId;
+    return id&&blocks[id]?blocks[id]:null;
+  }
+  function setScratchNumberField(blocks,input,value){
+    const child=blockInputChild(blocks,input);
+    if(!child||!child.fields)return false;
+    const field=child.fields.NUM||child.fields.TEXT||Object.values(child.fields).find(x=>x&&Object.prototype.hasOwnProperty.call(x,'value'));
+    if(!field)return false;
+    field.value=String(value);
+    return true;
+  }
+  function applyScratchPanelPrices(w,characters){
+    const panel=scratchTargetByName(w,'パネル');
+    const blocks=panel?.blocks?._blocks||panel?.blocks;
+    if(!blocks||typeof blocks!=='object')return 0;
+    const prices=new Map(characters.filter(x=>x.side==='ally'&&x.legacyCode).map(x=>[String(x.legacyCode),Number(x.cost||0)]));
+    let changed=0;
+    for(const block of Object.values(blocks)){
+      if(block?.opcode!=='procedures_call'||block.mutation?.proccode!=='n %s cat c %s 1or2? %s')continue;
+      let ids=[];try{ids=JSON.parse(block.mutation.argumentids||'[]');}catch{}
+      if(ids.length<2)continue;
+      const codeBlock=blockInputChild(blocks,block.inputs?.[ids[0]]);
+      const codeField=codeBlock?.fields?.TEXT||Object.values(codeBlock?.fields||{}).find(x=>x&&Object.prototype.hasOwnProperty.call(x,'value'));
+      const code=String(codeField?.value??'');
+      if(!prices.has(code))continue;
+      if(setScratchNumberField(blocks,block.inputs?.[ids[1]],prices.get(code)))changed++;
+    }
+    return changed;
+  }
+  async function applyScratchCharacterStats(w){
+    if(w.__CAT_CHARACTER_STATS_APPLIED)return w.__CAT_CHARACTER_STATS_RESULT||{};
+    const response=await api('/api/config');
+    const characters=response.config?.characters||[];
+    const stage=getScratchStage(w);
+    if(!stage)throw new Error('Scratchのステージデータがありません。');
+    const allyOrder=scratchList(stage,'味方')?.value||[];
+    const byAllyCode=new Map(characters.filter(x=>x.side==='ally'&&x.legacyCode).map(x=>[String(x.legacyCode),x]));
+    const allyLists={
+      hp:scratchList(stage,'hpp制御システム'),
+      attack:scratchList(stage,'hp減少'),
+      speed:scratchList(stage,'idousokudo'),
+      cooldown:scratchList(stage,'攻撃間隔'),
+      range:scratchList(stage,'syatei mikata'),
+      kb:scratchList(stage,'△味方KB')
+    };
+    let allyFields=0;
+    for(let i=0;i<allyOrder.length;i++){
+      const character=byAllyCode.get(String(allyOrder[i]));if(!character)continue;
+      for(const [field,list] of Object.entries(allyLists)){
+        if(!list)continue;
+        const value=field==='attack'?-Math.abs(Number(character.attack||0)):Number(character[field]||0);
+        if(setScratchListValue(list,i,value,field==='range'))allyFields++;
+      }
+    }
+    const enemyOrder=scratchList(stage,'teki')?.value||[];
+    const byEnemyCode=new Map(characters.filter(x=>x.side==='enemy'&&x.legacyCode).map(x=>[String(x.legacyCode),x]));
+    const enemyAttackOrder=scratchList(stage,'てきさん')?.value||[];
+    const enemyAttackList=scratchList(stage,'hpgs');
+    let enemyFields=0;
+    for(let i=0;i<enemyOrder.length;i++){
+      const code=String(enemyOrder[i]),character=byEnemyCode.get(code);
+      if(!character)continue;
+      const attackIndex=scratchIndex(enemyAttackOrder,code);
+      if(enemyAttackList&&attackIndex>=0&&setScratchListValue(enemyAttackList,attackIndex,-Math.abs(Number(character.attack||0))))enemyFields++;
+      const source=character.legacySource;
+      if(source==='z'&&i<30){
+        const sprite=scratchTargetByName(w,'z');
+        if(setScratchListValue(scratchList(sprite,'HP制御システム'),i,Number(character.hp||1)))enemyFields++;
+        if(setScratchListValue(scratchList(sprite,'△敵KB数'),i,Number(character.kb||1)))enemyFields++;
+      }else if(source==='味方?teki?キャラ'){
+        const sprite=scratchTargetByName(w,'味方?teki?キャラ');
+        const codes=scratchList(sprite,'tekiikikikikii')?.value||[];
+        const j=scratchIndex(codes,code);
+        if(setScratchListValue(scratchList(sprite,'は？制限'),j,Number(character.hp||1)))enemyFields++;
+      }else if(source==='Pico'){
+        const sprite=scratchTargetByName(w,'Pico');
+        const codes=scratchList(sprite,'敵')?.value||[];
+        const j=scratchIndex(codes,code);
+        if(setScratchListValue(scratchList(sprite,'HP制御システム'),j,Number(character.hp||1)))enemyFields++;
+        if(setScratchListValue(scratchList(sprite,'△敵KB数'),j,Number(character.kb||1)))enemyFields++;
+      }
+    }
+    const pricesChanged=applyScratchPanelPrices(w,characters);
+    const result={allyFields,enemyFields,pricesChanged};
+    w.__CAT_CHARACTER_STATS_RESULT=result;
+    w.__CAT_CHARACTER_STATS_APPLIED=true;
+    console.info('CAT operator character stats applied:',result);
+    return result;
+  }
   const uniqueStrings=values=>[...new Set((values||[]).map(value=>String(value??'').trim()).filter(Boolean))];
   async function applyScratchPlayerProfile(w){
     if(!auth||auth.role!=='player')return;
@@ -603,13 +708,16 @@
   logoutButton.addEventListener('click',performLogout);
   pendingLogoutButton.addEventListener('click',performLogout);
 
-  startButton.addEventListener('click',()=>{
+  startButton.addEventListener('click',async()=>{
     const w=frame.contentWindow;
     try{
       if(!w||!w.scaffolding)throw new Error('ゲームの準備がまだ完了していません。再読み込みしてください。');
+      try{await applyScratchCharacterStats(w);}catch(statsError){console.warn('CAT character stats could not be applied:',statsError);}
       passAuthToGame();
       if(!w.__CAT_EXTERNAL_STARTED){
         w.scaffolding.start();
+        // Green-flag initialization must finish before the runtime values are re-applied.
+        setTimeout(()=>applyScratchCharacterStats(w).catch(err=>console.warn('CAT character stat reapply:',err)),350);
         w.__CAT_EXTERNAL_STARTED=true;
         if(auth?.role==='player'){
           applyScratchPlayerProfile(w).then(result=>{
