@@ -383,9 +383,10 @@
     xpEntry.value=xp;
     churuEntry.value=catChuru;
     const nextProfile={...profile,xp,catChuru,owned};
-    await api('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:nextProfile})});
+    const saved=await api('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:nextProfile})});
     w.__CAT_PROFILE_SYNCED=true;
-    w.__CAT_PROFILE_LAST=JSON.stringify({xp,catChuru,owned,unlocked:profile.unlockedStages||[]});
+    w.__CAT_PROFILE_UPDATED_AT=Number(saved.updatedAt||me.updatedAt||0);
+    w.__CAT_PROFILE_LAST=JSON.stringify({xp,catChuru,owned});
     return {xp,catChuru,ownedCount:owned.length};
   }
   async function saveScratchPlayerProfile(w){
@@ -400,13 +401,32 @@
       const me=await api('/api/me');
       const codeById=new Map((me.legacyCharacterCodes||[]).filter(x=>x&&x.id&&x.legacyCode).map(x=>[String(x.id),String(x.legacyCode)]));
       const idByCode=new Map([...codeById].map(([id,code])=>[code,id]));
-      const owned=uniqueStrings([...(me.profile?.owned||[]),...uniqueStrings(ownedList.value).map(code=>idByCode.get(code)).filter(Boolean)]).filter(id=>codeById.has(id));
-      const xp=Math.max(0,Math.floor(Number(xpEntry.value)||0));
-      const catChuru=Math.max(0,Math.floor(Number(churuEntry.value)||0));
+      const localCodes=uniqueStrings(ownedList.value);
+      const localOwned=localCodes.map(code=>idByCode.get(code)).filter(Boolean);
+      const remoteProfile=me.profile||{};
+      const last=(()=>{try{return JSON.parse(w.__CAT_PROFILE_LAST||'{}');}catch{return {};}})();
+      const remoteChanged=Number(me.updatedAt||0)!==Number(w.__CAT_PROFILE_UPDATED_AT||0)||
+        (last.xp!==undefined&&Number(remoteProfile.xp||0)!==Number(last.xp))||
+        (last.catChuru!==undefined&&Number(remoteProfile.catChuru||0)!==Number(last.catChuru))||
+        (last.owned!==undefined&&JSON.stringify(uniqueStrings(remoteProfile.owned||[]).sort())!==JSON.stringify(uniqueStrings(last.owned||[]).sort()));
+      let xp=Math.max(0,Math.floor(Number(xpEntry.value)||0));
+      let catChuru=Math.max(0,Math.floor(Number(churuEntry.value)||0));
+      if(remoteChanged){
+        const lastXp=Number(last.xp??remoteProfile.xp??0);
+        const lastChuru=Number(last.catChuru??remoteProfile.catChuru??0);
+        xp=Math.max(0,xp+(Number(remoteProfile.xp||0)-lastXp));
+        catChuru=Math.max(0,catChuru+(Number(remoteProfile.catChuru||0)-lastChuru));
+      }
+      const owned=uniqueStrings([...(remoteProfile.owned||[]),...localOwned]).filter(id=>codeById.has(id));
+      const mergedCodes=uniqueStrings([...localCodes,...owned.map(id=>codeById.get(id))]);
+      ownedList.value=mergedCodes;
+      xpEntry.value=xp;
+      churuEntry.value=catChuru;
       const snapshot=JSON.stringify({xp,catChuru,owned});
-      if(snapshot===w.__CAT_PROFILE_LAST)return;
-      const nextProfile={...(me.profile||{}),xp,catChuru,owned};
-      await api('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:nextProfile})});
+      if(snapshot===w.__CAT_PROFILE_LAST&&Number(me.updatedAt||0)===Number(w.__CAT_PROFILE_UPDATED_AT||0))return;
+      const nextProfile={...remoteProfile,xp,catChuru,owned};
+      const saved=await api('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:nextProfile})});
+      w.__CAT_PROFILE_UPDATED_AT=Number(saved.updatedAt||me.updatedAt||0);
       w.__CAT_PROFILE_LAST=snapshot;
     }catch(error){console.warn('CAT profile sync failed:',error);}
     finally{w.__CAT_PROFILE_SYNC_BUSY=false;}
