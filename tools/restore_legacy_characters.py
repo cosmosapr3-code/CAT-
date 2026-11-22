@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Restore original Scratch CAT units, evolution forms, enemy encyclopedia and stage title cards."""
-import base64, io, json, re, struct, zlib, zipfile
+import base64, io, json, re, struct, zlib, zipfile, xml.etree.ElementTree as ET
 from pathlib import Path
 import cairosvg
 from PIL import Image
@@ -147,6 +147,47 @@ def image_data(archive, targets, sprite_name, costume_name, width=720, max_heigh
     buf = io.BytesIO(); im.save(buf, format="WEBP", quality=75, method=4)
     return "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
+def svg_costume_title(archive, target, costume_name):
+    """Read the visible enemy-book title from the original Scratch SVG.
+
+    The book cards store the title as a text element around y=219; descriptions
+    and decorative labels occupy different positions. This avoids guessing from
+    Scratch costume IDs such as z, y, or k.
+    """
+    if not target:
+        return ""
+    costume = next(
+        (item for item in target.get("costumes", [])
+         if str(item.get("name", "")) == str(costume_name)),
+        None
+    )
+    if not costume or costume.get("dataFormat") != "svg":
+        return ""
+    try:
+        root = ET.fromstring(archive.read(costume["md5ext"]))
+    except (KeyError, ET.ParseError, OSError):
+        return ""
+
+    candidates = []
+    for node in root.iter():
+        if node.tag.rsplit("}", 1)[-1] != "text":
+            continue
+        text = "".join(node.itertext()).strip()
+        if not text:
+            continue
+        transform = node.attrib.get("transform", "")
+        match = re.search(r"translate\\(\\s*[-+0-9.eE]+\\s*,\\s*([-+0-9.eE]+)", transform)
+        if match:
+            try:
+                y = float(match.group(1))
+                candidates.append((abs(y - 219.0), text))
+            except ValueError:
+                pass
+    if not candidates:
+        return ""
+    return min(candidates, key=lambda item: item[0])[1]
+
+
 def series_for(code):
     if re.fullmatch(r"z\d+",code): return "はじめの一歩・基本ステージ"
     if re.fullmatch(r"p\d+",code): return "Picoの戦場"
@@ -168,7 +209,26 @@ def main():
     targets = {t["name"]:t for t in project["targets"]}
     stage = targets["Stage"]; cache = {}
     allies = get_list(stage,"味方"); enemies = get_list(stage,"teki")
-    ally_prices = extract_ally_prices(targets.get("パネル", {}))
+    panel_target = targets.get("パネル", {})
+    ally_prices = extract_ally_prices(panel_target)
+
+    # The original production panel stores its gauge growth rate by the
+    # Stage "mikata!" order. Convert that rate into an estimated seconds value
+    # for the admin editor (50 gauge points at the Scratch runtime's ~30 ticks/s).
+    panel_codes = get_list(stage, "mikata!")
+    panel_growth = numbers(get_list(panel_target, "キャラの増え方"))
+    growth_by_code = {}
+    for panel_code, growth in zip(panel_codes, panel_growth):
+        if panel_code not in growth_by_code and growth > 0:
+            growth_by_code[panel_code] = growth
+    # The legacy project uses "kb" in the production order for this ally's
+    # "kbi" code in the character roster.
+    if "kb" in growth_by_code:
+        growth_by_code.setdefault("kbi", growth_by_code["kb"])
+    ally_reproduction = {
+        code: round(50.0 / (rate * 30.0), 2)
+        for code, rate in growth_by_code.items() if rate > 0
+    }
     if len(ally_prices) < len(allies):
         missing = [code for code in allies if code not in ally_prices]
         raise RuntimeError(f"Could not recover original gacha prices for: {missing}")
@@ -206,7 +266,7 @@ def main():
           "range":max(1,reach[i]) if i<len(reach) else 100,
           "speed":max(0.1,speed[i]) if i<len(speed) else 2,
           "cost":ally_prices[code],"cooldown":max(0.8,min(30,interval[i])) if i<len(interval) else 3,
-          "reproduction":max(3,5+(i%7)*2),
+          "reproduction":ally_reproduction.get(code, 0),
           "rarity":["normal","rare","superRare","uberRare"][min(3,i*4//max(1,len(allies)))],
           "attributes":["旧ゲーム引継ぎ"],"abilities":[],
           "attackMode":"area" if i<len(attack_modes) and str(attack_modes[i])=="h" else "single",
@@ -224,6 +284,11 @@ def main():
     cash=numbers(get_list(stage,"敵　金")); atk_by={}
     for code,value in zip(get_list(stage,"てきさん"),numbers(get_list(stage,"hpgs"))): atk_by.setdefault(code,abs(value))
     si={c:i for i,c in enumerate(scodes)}; pi={c:i for i,c in enumerate(pcodes)}
+    enemy_book_target = targets.get("図鑑", {})
+    enemy_names = {
+        str(index): svg_costume_title(archive, enemy_book_target, index)
+        for index in range(len(enemies))
+    }
     enemies_out=[]
     for i,code in enumerate(enemies):
         if i<30: source="z"; hp=zhp[i] if i<len(zhp) else 1000; kb=zkb[i] if i<len(zkb) else 2
@@ -235,7 +300,7 @@ def main():
         enemy_frames=animation_frames(archive,targets,[source],code,(88,88),60,cache)
         enemy_walk,enemy_attack=split_animation(enemy_frames,data_uri(archive,targets,source,code,(64,64),64,cache))
         enemies_out.append({
-          "id":uid,"name":(str(code) if any("\\u3040" <= ch <= "\\u30ff" or "\\u4e00" <= ch <= "\\u9fff" for ch in str(code)) else f"敵 {code}"),"legacyCode":code,"side":"enemy",
+          "id":uid,"name":enemy_names.get(str(i)) or (str(code) if any("\\u3040" <= ch <= "\\u30ff" or "\\u4e00" <= ch <= "\\u9fff" for ch in str(code)) else f"敵 {code}"),"encyclopediaName":enemy_names.get(str(i), ""),"legacyCode":code,"side":"enemy",
           "hp":max(1,round(hp)),"attack":max(1,round(atk_by.get(code,100))),
           "kb":max(0,round(kb)),"range":100,"speed":18,"cost":0,"cooldown":3,
           "reward":max(5,round(cash[i])) if i<len(cash) else 30,
