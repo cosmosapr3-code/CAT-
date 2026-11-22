@@ -685,6 +685,47 @@ async function handleApi(request, env) {
     return json({ ok: true, payload, alreadyClaimed: false });
   }
 
+  // TERRACARD login calls this endpoint to collect completed CAT rewards
+  // for the same verified username. The TERRA token is checked server-to-server.
+  if (method === "POST" && path === "/api/terra-reward/pending") {
+    const body = await request.json().catch(() => ({}));
+    const terraToken = String(body.terraToken || "").trim();
+    if (terraToken.length < 20) return json({ error: "TERRACARDログイン情報がありません。" }, 400);
+    let terraSession;
+    try {
+      const verifyResponse = await fetch("https://terracard-api.cosmos-apr-3.workers.dev/me", {
+        method: "GET", redirect: "error", cache: "no-store",
+        headers: { "Authorization": "Bearer " + terraToken }
+      });
+      terraSession = await verifyResponse.json().catch(() => ({}));
+      if (!verifyResponse.ok || !terraSession.player || typeof terraSession.player !== "object") {
+        return json({ error: "TERRACARDのプレイヤーとしてログインしてください。" }, 401);
+      }
+    } catch {
+      return json({ error: "TERRACARDのログイン状態を確認できませんでした。" }, 502);
+    }
+    const username = String(terraSession.username || terraSession.player.username || terraSession.player.userName || "").trim();
+    if (!username) return json({ error: "TERRACARDのユーザー名を確認できませんでした。" }, 401);
+    const db = getDb(env);
+    const catUser = await db.prepare("SELECT id, username FROM users WHERE username = ? COLLATE NOCASE").bind(username).first();
+    if (!catUser) return json({ ok: true, username, deliveries: [] });
+    const config = await loadConfig(env, request);
+    const data = await readProfileForUser(db, catUser.id, config);
+    const missions = await loadMissions(env, request);
+    for (const mission of missions) {
+      if (!data.profile.completedMissions.includes(mission.id)) continue;
+      for (const rewardId of safeStringIds(mission.rewards?.externalRewardIds, 100)) {
+        await ensureTerraRewardDelivery(db, { role: "player", user_id: catUser.id, username: catUser.username }, mission, rewardId);
+      }
+    }
+    const deliveries = await getTerraRewardDeliveryStatus(db, catUser.id, request);
+    return json({
+      ok: true,
+      username,
+      deliveries: deliveries.filter(item => item.status === "claimable" && item.claimUrl)
+    });
+  }
+
   if (method === "POST" && path === "/api/terra-reward/ack") {
     const body = await request.json().catch(() => ({}));
     const token = String(body.token || "");
@@ -780,7 +821,7 @@ async function handleApi(request, env) {
   }
 
   // The one-use reward acknowledgement is allowed from the TERRA CARD frontend.
-  const isTerraClaimAck = path === "/api/terra-reward/ack" && method === "POST" && isAllowedTerraClaimOrigin(request);
+  const isTerraClaimAck = ["/api/terra-reward/ack", "/api/terra-reward/pending"].includes(path) && method === "POST" && isAllowedTerraClaimOrigin(request);
 
   // 別サイトからのデータ変更を拒否
   if (
@@ -1707,7 +1748,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/api/terra-reward/ack" && request.method === "OPTIONS" && isAllowedTerraClaimOrigin(request)) {
+    if (["/api/terra-reward/ack", "/api/terra-reward/pending"].includes(url.pathname) && request.method === "OPTIONS" && isAllowedTerraClaimOrigin(request)) {
       return new Response(null, {
         status: 204,
         headers: {
@@ -1724,7 +1765,7 @@ export default {
       try {
         await ensureSchema(env);
         const response = await handleApi(request, env);
-        return (url.pathname === "/api/terra-reward/claim" || url.pathname === "/api/terra-reward/ack")
+        return (url.pathname === "/api/terra-reward/claim" || url.pathname === "/api/terra-reward/ack" || url.pathname === "/api/terra-reward/pending")
           ? addTerraClaimCors(request, response)
           : response;
       } catch (error) {
@@ -1732,7 +1773,7 @@ export default {
         const response = json({
           error: error?.message || "サーバー内部でエラーが発生しました。"
         }, 500);
-        return (url.pathname === "/api/terra-reward/claim" || url.pathname === "/api/terra-reward/ack")
+        return (url.pathname === "/api/terra-reward/claim" || url.pathname === "/api/terra-reward/ack" || url.pathname === "/api/terra-reward/pending")
           ? addTerraClaimCors(request, response)
           : response;
       }
