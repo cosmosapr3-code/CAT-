@@ -201,7 +201,7 @@ function validateProfile(p) {
     ownedCards: ids(p.ownedCards, 1000),
     ownedExternalRewards: ids(p.ownedExternalRewards, 1000),
     unlockedStages: ids(p.unlockedStages, 500),
-    unlockedChapters: ids(p.unlockedChapters, 4).filter(id => ["1", "2", "3", "4"].includes(id))
+    unlockedChapters: [...new Set(["1", ...ids(p.unlockedChapters, 4).filter(id => ["1", "2", "3", "4"].includes(id))])].slice(0, 4)
   };
 }
 function starterProfile(config) {
@@ -220,7 +220,7 @@ function starterProfile(config) {
     ownedCards: [],
     ownedExternalRewards: [],
     unlockedStages: [],
-    unlockedChapters: []
+    unlockedChapters: ["1"]
   };
 }
 
