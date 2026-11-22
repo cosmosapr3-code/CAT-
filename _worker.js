@@ -317,6 +317,30 @@ function resolveCharacterDisplayName(character) {
   return current || candidates[0] || "";
 }
 
+const CHARACTER_STAT_LIMITS = {
+  hp: [1, 1000000000000], attack: [0, 1000000000000],
+  speed: [0.01, 100000], cooldown: [0.01, 3600],
+  range: [0, 1000000], kb: [0, 100000],
+  cost: [0, 1000000000], reproduction: [0, 100000],
+  reward: [0, 1000000000]
+};
+function applyCharacterStatOverrides(characters, overrides) {
+  if (!Array.isArray(characters) || !overrides || typeof overrides !== "object" || Array.isArray(overrides)) return characters || [];
+  return characters.map(character => {
+    const patch = overrides[character.id];
+    if (!patch || typeof patch !== "object" || Array.isArray(patch)) return character;
+    const next = { ...character };
+    for (const [field, limits] of Object.entries(CHARACTER_STAT_LIMITS)) {
+      if (field === "cost" && character.side !== "ally") continue;
+      if (field === "reward" && character.side !== "enemy") continue;
+      if (!Object.prototype.hasOwnProperty.call(patch, field)) continue;
+      const value = Number(patch[field]);
+      if (Number.isFinite(value) && value >= limits[0] && value <= limits[1]) next[field] = value;
+    }
+    return next;
+  });
+}
+
 async function loadConfig(env, request) {
   const legacyData=await loadLegacyGameData(env,request);
   const legacyCharacters=Array.isArray(legacyData?.characters)?legacyData.characters:null;
@@ -349,6 +373,14 @@ async function loadConfig(env, request) {
         });
       }
     } catch(error) { console.error("Character name overrides could not be read:",error); }
+  }
+  // 運営が保存したキャラクター能力値を元データに重ねる。
+  const statsRow=await db.prepare("SELECT value_json FROM game_config WHERE config_key = 'character_stats'").first();
+  if(statsRow?.value_json) {
+    try {
+      const savedStats=JSON.parse(statsRow.value_json);
+      config.characters=applyCharacterStatOverrides(config.characters,savedStats);
+    } catch(error) { console.error("Character stats overrides could not be read:",error); }
   }
   // Scratch内部コード（味方n・敵pなど）を画面名として出さず、
   // 元データに正式名がある場合はそちらを優先する。
@@ -1097,10 +1129,69 @@ async function handleApi(request, env) {
         id: c.id, name: resolveCharacterDisplayName(c), side: c.side,
         legacyCode: c.legacyCode || "", displayName: c.displayName || "",
         originalName: c.originalName || "", nickname: c.nickname || "",
-        aliases: Array.isArray(c.aliases) ? c.aliases.slice(0, 10) : []
+        aliases: Array.isArray(c.aliases) ? c.aliases.slice(0, 10) : [],
+        hp: Number(c.hp || 0), attack: Number(c.attack || 0),
+        speed: Number(c.speed || 0), cooldown: Number(c.cooldown || 0),
+        range: Number(c.range || 0), kb: Number(c.kb || 0),
+        cost: c.side === "ally" ? Number(c.cost || 0) : null,
+        reproduction: c.side === "ally" ? Number(c.reproduction || 0) : null,
+        reward: c.side === "enemy" ? Number(c.reward || 0) : null
       })),
       externalRewards: EXTERNAL_REWARD_CATALOG.map(item => ({ id: item.id, name: item.name })),
       stages: (config.stages || []).map(stage => ({ id: stage.id, name: stage.name, legacyCode: stage.legacyCode || "", series: stage.series || stage.chapter || "" }))
+    });
+  }
+
+  // 運営用キャラクター能力値・味方の生産価格の編集。
+  if (path === "/api/admin/character-stats" && method === "PUT") {
+    const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
+    const body = await request.json().catch(() => ({}));
+    const updates = Array.isArray(body.updates) ? body.updates : (body.update ? [body.update] : []);
+    if (!updates.length || updates.length > 109) return json({ error: "更新するキャラクターを1〜109体選んでください。" }, 400);
+    const config = await loadConfig(env, request);
+    const byId = new Map((config.characters || []).map(character => [character.id, character]));
+    const db = getDb(env);
+    const row = await db.prepare("SELECT value_json FROM game_config WHERE config_key = 'character_stats'").first();
+    let saved = {};
+    try {
+      const value = row?.value_json ? JSON.parse(row.value_json) : {};
+      if (value && typeof value === "object" && !Array.isArray(value)) saved = { ...value };
+    } catch {}
+    const updatedIds = [];
+    for (const item of updates) {
+      if (!item || typeof item.id !== "string" || !byId.has(item.id)) return json({ error: "対象キャラクターが見つかりません。" }, 400);
+      const character = byId.get(item.id);
+      const patch = { ...(saved[item.id] || {}) };
+      let changed = false;
+      for (const [field, limits] of Object.entries(CHARACTER_STAT_LIMITS)) {
+        if (!Object.prototype.hasOwnProperty.call(item, field) || item[field] === "" || item[field] === null) continue;
+        if (field === "cost" && character.side !== "ally") continue;
+        if (field === "reward" && character.side !== "enemy") continue;
+        const value = Number(item[field]);
+        if (!Number.isFinite(value) || value < limits[0] || value > limits[1]) {
+          return json({ error: field + " の値が範囲外です。" }, 400);
+        }
+        patch[field] = value;
+        changed = true;
+      }
+      if (changed) saved[item.id] = patch;
+      updatedIds.push(item.id);
+    }
+    const encoded = JSON.stringify(saved);
+    if (encoded.length > 250000) return json({ error: "能力値の保存データが大きすぎます。" }, 413);
+    await db.prepare("INSERT INTO game_config (config_key, value_json, updated_at) VALUES ('character_stats', ?, ?) ON CONFLICT(config_key) DO UPDATE SET value_json=excluded.value_json, updated_at=excluded.updated_at")
+      .bind(encoded, nowSeconds()).run();
+    const refreshed = await loadConfig(env, request);
+    return json({
+      ok: true,
+      updated: (refreshed.characters || []).filter(character => updatedIds.includes(character.id)).map(character => ({
+        id: character.id, name: resolveCharacterDisplayName(character), side: character.side,
+        hp: Number(character.hp || 0), attack: Number(character.attack || 0),
+        speed: Number(character.speed || 0), cooldown: Number(character.cooldown || 0),
+        range: Number(character.range || 0), kb: Number(character.kb || 0),
+        cost: character.side === "ally" ? Number(character.cost || 0) : null,
+        reproduction: character.side === "ally" ? Number(character.reproduction || 0) : null
+      }))
     });
   }
 
