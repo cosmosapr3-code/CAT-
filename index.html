@@ -433,6 +433,41 @@
     const id=input.shadow||input.block||input.shadowId||input.blockId;
     return id&&blocks[id]?blocks[id]:null;
   }
+  function scratchLocalVariable(target,name){
+    return Object.values(target?.variables||{}).find(v=>v&&v.name===name&&v.isLocal===true)||null;
+  }
+  function scratchCharacterCode(target,codeMap){
+    const vars=Object.values(target?.variables||{});
+    const candidates=[
+      ...vars.filter(v=>v&&["敵名前","元コスチューム","namae"].includes(v.name)).map(v=>v.value),
+      target?.sprite?.costumes?.[target.currentCostume]?.name,
+      target?.sprite?.costumes?.[Number(target.currentCostume)]?.name
+    ];
+    for(const value of candidates){
+      const code=String(value??"").trim();
+      if(codeMap.has(code))return code;
+    }
+    return "";
+  }
+  function applyScratchCloneStats(target,codeMap){
+    const spriteName=target?.sprite?.name||target?.getName?.()||"";
+    if(!["z","Pico","味方?teki?キャラ","mikata","mikata2"].includes(spriteName))return 0;
+    const code=scratchCharacterCode(target,codeMap);
+    const character=codeMap.get(code);
+    if(!character)return 0;
+    let changed=0;
+    const fields={移動速度:Number(character.speed||0),射程距離:Number(character.range||0),秒数:Number(character.cooldown||0)};
+    for(const [name,value] of Object.entries(fields)){
+      const variable=scratchLocalVariable(target,name);
+      if(variable&&Number.isFinite(value)){variable.value=value;changed++;}
+    }
+    // Clone-local HP variables are initialized after creation in some sprites.
+    for(const name of ["max hp","maxHP"]){
+      const variable=scratchLocalVariable(target,name);
+      if(variable&&Number.isFinite(Number(character.hp))){variable.value=Number(character.hp);changed++;}
+    }
+    return changed;
+  }
   function setScratchNumberField(blocks,input,value){
     const child=blockInputChild(blocks,input);
     if(!child||!child.fields)return false;
@@ -492,8 +527,11 @@
     for(let i=0;i<enemyOrder.length;i++){
       const code=String(enemyOrder[i]),character=byEnemyCode.get(code);
       if(!character)continue;
-      const attackIndex=scratchIndex(enemyAttackOrder,code);
-      if(enemyAttackList&&attackIndex>=0&&setScratchListValue(enemyAttackList,attackIndex,-Math.abs(Number(character.attack||0))))enemyFields++;
+      if(enemyAttackList){
+        for(let attackIndex=0;attackIndex<enemyAttackOrder.length;attackIndex++){
+          if(String(enemyAttackOrder[attackIndex])===code&&setScratchListValue(enemyAttackList,attackIndex,-Math.abs(Number(character.attack||0))))enemyFields++;
+        }
+      }
       const source=character.legacySource;
       if(source==='z'&&i<30){
         const sprite=scratchTargetByName(w,'z');
@@ -513,7 +551,21 @@
       }
     }
     const pricesChanged=applyScratchPanelPrices(w,characters);
-    const result={allyFields,enemyFields,pricesChanged};
+    const runtime=(w.Scratch?.vm||w.scaffolding?.vm)?.runtime;
+    const cloneCodeMap=new Map(characters.filter(x=>x.legacyCode).map(x=>[String(x.legacyCode),x]));
+    let cloneFields=0;
+    if(runtime){
+      const applyCreated=target=>{
+        cloneFields+=applyScratchCloneStats(target,cloneCodeMap);
+        setTimeout(()=>{cloneFields+=applyScratchCloneStats(target,cloneCodeMap);},120);
+      };
+      if(!runtime.__CAT_CHARACTER_STATS_HANDLER){
+        runtime.__CAT_CHARACTER_STATS_HANDLER=applyCreated;
+        runtime.on?.('targetWasCreated',applyCreated);
+      }
+      for(const target of runtime.targets||[])cloneFields+=applyScratchCloneStats(target,cloneCodeMap);
+    }
+    const result={allyFields,enemyFields,pricesChanged,cloneFields};
     w.__CAT_CHARACTER_STATS_RESULT=result;
     w.__CAT_CHARACTER_STATS_APPLIED=true;
     console.info('CAT operator character stats applied:',result);
