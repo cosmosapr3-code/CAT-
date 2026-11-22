@@ -1506,7 +1506,6 @@ async function handleApi(request, env) {
       if (m.stageId && m.stageId === stage.id) return true;
       return Boolean(m.stageName && stageAliases.includes(norm(m.stageName)));
     });
-    if (!eligible.length) return json({ ok: true, completed: [], message: "このステージに対応するミッションはありません。" });
     const db = getDb(env);
     let data = null, completed = [], rainbowStarsGranted = 0, saved = false;
     for (let attempt = 0; attempt < 4 && !saved; attempt++) {
