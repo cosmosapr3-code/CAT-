@@ -203,6 +203,7 @@
   let pendingAdminGrant=null;
   try{pendingAdminGrant=JSON.parse(sessionStorage.getItem('cat-pending-admin-grant')||'null');}catch{pendingAdminGrant=null;}
   let pendingSpeedUpRequestId=null;
+  try{pendingSpeedUpRequestId=sessionStorage.getItem('cat-pending-speed-up-request')||null;}catch{pendingSpeedUpRequestId=null;}
   let speedUpTimer=null;
   let speedUpOriginalFramerate=30;
   function optionsHtml(items,idKey,labelKey,withBlank=false){return (withBlank?'<option value="">選択してください</option>':'')+items.map(x=>'<option value="'+esc(x[idKey])+'">'+esc(x[labelKey])+'</option>').join('');}
@@ -303,7 +304,7 @@
         };
       });
   }
-  async function reportStageWin(stageId,legacyCode,stageName){if(!auth||auth.role!=='player'||(!stageId&&!legacyCode&&!stageName))return null;const result=await api('/api/missions/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stageId,legacyCode,stageName})});if(result.completed?.length){toolsError.textContent='ミッション達成！報酬を受け取りました。';if(!toolsPanel.hidden)await loadPlayerMissions();}return result;}
+  async function reportStageWin(stageId,legacyCode,stageName){if(!auth||auth.role!=='player'||(!stageId&&!legacyCode&&!stageName))return null;const result=await api('/api/missions/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stageId,legacyCode,stageName})});if(Number(result.rainbowStarsGranted||0)>0){toolsError.textContent='ステージ初回クリア報酬：🌈 虹星 +'+Number(result.rainbowStarsGranted)+'。';}else if(result.completed?.length){toolsError.textContent='ミッション達成！報酬を受け取りました。';}await refreshPlayerWallet().catch(err=>console.warn('CAT wallet refresh after stage clear:',err));if(result.completed?.length&&!toolsPanel.hidden)await loadPlayerMissions();return result;}
   window.CAT_REPORT_STAGE_WIN=reportStageWin;
   window.addEventListener('message',e=>{if(e.source!==frame.contentWindow)return;const d=e.data||{};if(d.type==='CAT_STAGE_WIN'&&(d.stageId||d.legacyCode||d.stageName))reportStageWin(d.stageId||null,d.legacyCode||null,d.stageName||null).catch(err=>{toolsError.textContent=err.message;});});
   const terraClaimCss=document.createElement('style');terraClaimCss.textContent='.cat-tools-claim{display:inline-block;margin:5px 0 8px;padding:7px 12px;border-radius:8px;background:#176b8c;color:#fff;font-weight:800;text-decoration:none}';document.head.appendChild(terraClaimCss);
@@ -325,7 +326,7 @@
     const [c,p]=await Promise.all([api('/api/admin/catalog'),api('/api/admin/players')]);
     adminCatalog=c;
     const chars=c.characters||[],enemies=c.enemies||[],stages=c.stages||[];
-    const playerOptions=(p.players||[]).map(x=>({...x,displayName:x.username+'（XP '+Number(x.xp||0)+' / CAT '+Number(x.catChuru||0)+' / 章 '+Number(x.unlockedChapterCount||0)+'/4）'}));
+    const playerOptions=(p.players||[]).map(x=>({...x,displayName:x.username+'（XP '+Number(x.xp||0)+' / CAT '+Number(x.catChuru||0)+' / 🌈'+Number(x.rainbowStars||0)+' / MAX'+Number(x.items?.catmax||0)+' / ⚡'+Number(x.items?.speed_up||0)+' / 章 '+Number(x.unlockedChapterCount||0)+'/4）'}));
     $('cat-admin-player').innerHTML=optionsHtml(playerOptions,'id','displayName',true);
     const charOptions=chars.map(x=>({...x,displayName:x.name+(x.legacyCode?' ['+x.legacyCode+']':'')}));
     renderMultiSelect('cat-grant-characters',charOptions,'id','displayName');
@@ -509,7 +510,7 @@
       if(selectedPlayer){
         const keep=playerId;
         $('cat-admin-player').innerHTML=optionsHtml(
-          updated.players.map(x=>({...x,displayName:x.username+'（XP '+Number(x.xp||0)+' / CAT '+Number(x.catChuru||0)+' / 章 '+Number(x.unlockedChapterCount||0)+'/4）'})),
+          updated.players.map(x=>({...x,displayName:x.username+'（XP '+Number(x.xp||0)+' / CAT '+Number(x.catChuru||0)+' / 🌈'+Number(x.rainbowStars||0)+' / MAX'+Number(x.items?.catmax||0)+' / ⚡'+Number(x.items?.speed_up||0)+' / 章 '+Number(x.unlockedChapterCount||0)+'/4）'})),
           'id','displayName',true
         );
         $('cat-admin-player').value=keep;
@@ -1145,10 +1146,12 @@
     button.disabled=true;
     try{
       pendingSpeedUpRequestId=pendingSpeedUpRequestId||createRequestId();
+      try{sessionStorage.setItem('cat-pending-speed-up-request',pendingSpeedUpRequestId);}catch{}
       await api('/api/items/use',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({itemId:'speed_up',requestId:pendingSpeedUpRequestId})});
-      pendingSpeedUpRequestId=null;
       speedUpOriginalFramerate=Number(vm.runtime?.frameLoop?.framerate||vm.runtime?.framerate||30);
       vm.setFramerate(Math.min(60,Math.max(30,speedUpOriginalFramerate*2)));
+      pendingSpeedUpRequestId=null;
+      try{sessionStorage.removeItem('cat-pending-speed-up-request');}catch{}
       if(speedUpTimer)clearTimeout(speedUpTimer);
       speedUpTimer=setTimeout(()=>{
         try{if(frame.contentWindow===w&&w.scaffolding?.vm?.setFramerate)w.scaffolding.vm.setFramerate(speedUpOriginalFramerate);}catch(e){console.warn('CAT speed-up restore:',e);}
