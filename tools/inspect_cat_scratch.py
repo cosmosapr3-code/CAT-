@@ -127,4 +127,45 @@ for target in targets:
                 "rootFields": root.get("fields", {}),
                 "nodes": hit_nodes[:40]
             })
+# Extra diagnostics for recovering the actual character display names.  The
+# roster builder previously copied Scratch sprite IDs (e.g. n, p, k) as names.
+stage_target = next((t for t in targets if t.get("isStage") or t.get("name") == "Stage"), {})
+summary["character_name_sources"] = {
+    "stage_variables": [
+        {"name": item[0], "value": item[1]}
+        for item in stage_target.get("variables", {}).values()
+        if any(key in str(item[0]) for key in ("味方", "敵", "キャラ", "名前", "経験値", "チュール", "お金", "所持"))
+    ],
+    "stage_lists": [
+        {"name": item[0], "values": item[1]}
+        for item in stage_target.get("lists", {}).values()
+        if any(key in str(item[0]) for key in ("味方", "敵", "キャラ", "名前", "経験値", "チュール", "お金", "所持", "図鑑", "セーブ"))
+    ],
+    "target_costumes": {
+        t.get("name", ""): [c.get("name", "") for c in t.get("costumes", [])]
+        for t in targets
+        if t.get("name") in ("編成表", "mikata", "mikata2", "z", "Pico", "味方?teki?キャラ", "図鑑", "Stage")
+    }
+}
+# Capture Japanese text literals from Scratch blocks; these may contain the
+# in-game labels that are not the internal sprite IDs.
+japanese_literals = set()
+say_blocks = []
+for target in targets:
+    for block_id, block in target.get("blocks", {}).items():
+        if not isinstance(block, dict):
+            continue
+        fields = block.get("fields", {})
+        inputs = block.get("inputs", {})
+        literals = collect_literals(fields) + collect_literals(inputs)
+        for value in literals:
+            if isinstance(value, str) and re.search(r"[ぁ-んァ-ヶ一-龠]", value):
+                if len(value) <= 100:
+                    japanese_literals.add(value)
+        if block.get("opcode", "").startswith("looks_say") or block.get("opcode", "").startswith("looks_think"):
+            if literals:
+                say_blocks.append({"target": target.get("name", ""), "opcode": block.get("opcode", ""), "texts": [v for v in literals if isinstance(v, str) and len(v) <= 100]})
+summary["japanese_text_literals"] = sorted(japanese_literals)
+summary["say_and_think_blocks"] = say_blocks[:1000]
+
 print(json.dumps(summary, ensure_ascii=False, separators=(",", ":")))
