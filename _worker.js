@@ -660,7 +660,7 @@ async function handleApi(request, env) {
       const stages = Array.isArray(legacyData?.stages) ? legacyData.stages : [];
       const evolutionForms = allies.reduce((total, character) =>
         total + Math.max(0, (character.forms || []).length - 1), 0);
-      return json({
+      const health = {
         ok: true,
         service: "CAT大戦争 API",
         database: "connected",
@@ -673,7 +673,22 @@ async function handleApi(request, env) {
           stages: stages.length,
           loaded: allies.length === 40 && enemies.length === 69 && stages.length === 109
         }
-      });
+      };
+      // Lightweight name-only diagnostic endpoint. Character names are public game data;
+      // never include image frames or large base64 assets in this response.
+      if (url.searchParams.get("includeNames") === "1") {
+        health.characters = chars.map(character => ({
+          id: character.id || "",
+          name: character.name || "",
+          side: character.side || "",
+          legacyCode: character.legacyCode || "",
+          displayName: character.displayName || "",
+          originalName: character.originalName || "",
+          nickname: character.nickname || "",
+          aliases: Array.isArray(character.aliases) ? character.aliases.slice(0, 10) : []
+        }));
+      }
+      return json(health);
     } catch (e) {
       return json({ ok: false, error: e.message }, 500);
     }
