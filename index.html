@@ -854,6 +854,23 @@
       throw new Error('Scratch本体の章選択リスト「ステージ章」を初期化できませんでした。');
     const codeById=new Map((me.legacyCharacterCodes||[]).filter(x=>x&&x.id&&x.legacyCode).map(x=>[String(x.id),String(x.legacyCode)]));
     const idByCode=new Map([...codeById].map(([id,code])=>[code,id]));
+    const adminChapters=(profile.adminUnlockedChapters||[]).map(Number).filter(n=>Number.isInteger(n)&&n>=2&&n<=4);
+    const highestAdminChapter=adminChapters.length?Math.max(...adminChapters):0;
+    const stageClearList=getScratchEntry(stage,'ステージクリア',true);
+    const configuredStages=w.__CAT_CHARACTER_STATS_CONFIG?.config?.stages||[];
+    const chapterNumber=value=>{
+      const text=String(value||'');
+      const match=text.match(/第\s*([1-4一二三四])\s*章/);
+      if(!match)return 0;
+      return /^[1-4]$/.test(match[1])?Number(match[1]):(['一','二','三','四'].indexOf(match[1])+1);
+    };
+    if(stageClearList&&highestAdminChapter>1){
+      const bypassCodes=configuredStages.filter(item=>{
+        const chapter=chapterNumber(item.series||item.chapter||item.name);
+        return chapter>0&&chapter<highestAdminChapter&&item.legacyCode;
+      }).map(item=>String(item.legacyCode));
+      for(const code of bypassCodes)if(!stageClearList.value.some(value=>String(value)===code))stageClearList.value.push(code);
+    }
     const localCodes=uniqueStrings(ownedList.value);
     const localOwned=localCodes.map(code=>idByCode.get(code)).filter(Boolean);
     const profile=me.profile||{};
@@ -878,7 +895,7 @@
         const id=idByCode.get(String(allyOrder.value[i]));
         if(!id)continue;
         while(levelList.value.length<=i)levelList.value.push(1);
-        const level=Math.max(1,Math.min(100,Math.floor(Number(levelList.value[i])||1),Number(nextLevels[id]||1)));
+        const level=Math.max(1,Math.min(100,Math.max(Math.floor(Number(levelList.value[i])||1),Math.floor(Number(nextLevels[id]||1))));
         levelList.value[i]=String(level);
         nextLevels[id]=level;
       }
@@ -887,7 +904,7 @@
     const saved=await api('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:nextProfile,expectedProfile:me.profile,expectedProfileExists:me.profileExists!==false})});
     w.__CAT_PROFILE_SYNCED=true;
     w.__CAT_PROFILE_UPDATED_AT=Number(saved.updatedAt||me.updatedAt||0);
-    w.__CAT_PROFILE_LAST=JSON.stringify({xp,catChuru,owned});
+    w.__CAT_PROFILE_LAST=JSON.stringify({xp,catChuru,owned,levels:nextLevels});
     return {xp,catChuru,ownedCount:owned.length};
   }
   async function saveScratchPlayerProfile(w){
@@ -918,7 +935,8 @@
       const remoteChanged=Number(me.updatedAt||0)!==Number(w.__CAT_PROFILE_UPDATED_AT||0)||
         (last.xp!==undefined&&Number(remoteProfile.xp||0)!==Number(last.xp))||
         (last.catChuru!==undefined&&Number(remoteProfile.catChuru||0)!==Number(last.catChuru))||
-        (last.owned!==undefined&&JSON.stringify(uniqueStrings(remoteProfile.owned||[]).sort())!==JSON.stringify(uniqueStrings(last.owned||[]).sort()));
+        (last.owned!==undefined&&JSON.stringify(uniqueStrings(remoteProfile.owned||[]).sort())!==JSON.stringify(uniqueStrings(last.owned||[]).sort()))||
+        (last.levels!==undefined&&JSON.stringify(remoteProfile.levels||{})!==JSON.stringify(last.levels||{}));
       let xp=Math.max(0,Math.floor(Number(xpEntry.value)||0));
       let catChuru=Math.max(0,Math.floor(Number(churuEntry.value)||0));
       if(remoteChanged){
@@ -932,7 +950,7 @@
       ownedList.value=mergedCodes;
       xpEntry.value=xp;
       churuEntry.value=catChuru;
-      const snapshot=JSON.stringify({xp,catChuru,owned});
+      const snapshot=JSON.stringify({xp,catChuru,owned,levels:nextLevels});
       if(snapshot===w.__CAT_PROFILE_LAST&&Number(me.updatedAt||0)===Number(w.__CAT_PROFILE_UPDATED_AT||0))return;
       const levelList=getScratchEntry(stage,'CAT軍団のレベルセーブ用',true);
       const allyOrder=getScratchEntry(stage,'味方',true);
