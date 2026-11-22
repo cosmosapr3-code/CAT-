@@ -32,6 +32,9 @@
 #cat-speedup-use:disabled,#cat-missions-refresh:disabled{opacity:.55;cursor:wait}
 #cat-user-homebar{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;padding:7px}
 #cat-user-homebar[hidden],#cat-player-wallet[hidden],#cat-speedup-use[hidden]{display:none!important}
+.cat-terra-delivery-row{margin:8px 0;padding:10px;border:1px solid #56462d;border-radius:9px;background:#1c1a16}
+.cat-terra-delivery-row b{color:#ffe09a}
+.cat-terra-delivery-row small{display:block;margin-top:4px;color:#c9bda8;overflow-wrap:anywhere}
 .cat-grant-small-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
 #cat-tools-launcher{position:fixed;right:14px;bottom:14px;z-index:2147482000;border:2px solid #e8c06d;border-radius:999px;padding:12px 17px;background:linear-gradient(#f7dc9f,#bf8730);color:#271a08;font-weight:900;box-shadow:0 5px 18px #0009;cursor:pointer}
 #cat-tools-launcher[hidden],#cat-tools-panel[hidden]{display:none!important}
@@ -119,6 +122,13 @@
   <div id="cat-tools-error" class="cat-tools-error" aria-live="polite"></div>
   <section id="cat-player-missions" class="cat-tools-section"><h3>📜 ミッション</h3><button id="cat-missions-refresh" type="button">🔄 報酬状況を再確認</button><div id="cat-mission-list"></div><h3 style="margin-top:18px">🎁 TERRACARD連携カード報酬</h3><p class="cat-tools-note">ミッション達成後、同じプレイヤー名でTERRACARDにログインし、受取ボタンからカードを受け取れます。</p><div id="cat-owned-external-rewards"></div></section>
   <section id="cat-admin-tools" class="cat-tools-section" hidden>
+    <div class="cat-tools-section" id="cat-terra-delivery-check">
+      <h3>🧾 TERRACARD報酬の受取状況</h3>
+      <p class="cat-tools-note">未受取・受取済み・配達エラーを直近100件まで確認できます。</p>
+      <button id="cat-terra-delivery-refresh" class="cat-tools-action" type="button">未受取報酬を確認</button>
+      <p id="cat-terra-delivery-summary" class="cat-tools-note" aria-live="polite">まだ確認していません。</p>
+      <div id="cat-terra-delivery-list"></div>
+    </div>
     <h3>🎁 プレイヤーへ報酬を配布</h3>
     <label class="cat-tools-field">配布先プレイヤー（ステージを追加するユーザー）<select id="cat-admin-player"></select></label>
     <div class="cat-tools-row"><label class="cat-tools-field">追加する経験値<input id="cat-grant-xp" type="number" min="0" max="1000000000" value="0"></label><label class="cat-tools-field">追加するCATチュール<input id="cat-grant-churu" type="number" min="0" max="1000000000" value="0"></label></div>
@@ -298,6 +308,18 @@
   window.addEventListener('message',e=>{if(e.source!==frame.contentWindow)return;const d=e.data||{};if(d.type==='CAT_STAGE_WIN'&&(d.stageId||d.legacyCode||d.stageName))reportStageWin(d.stageId||null,d.legacyCode||null,d.stageName||null).catch(err=>{toolsError.textContent=err.message;});});
   const terraClaimCss=document.createElement('style');terraClaimCss.textContent='.cat-tools-claim{display:inline-block;margin:5px 0 8px;padding:7px 12px;border-radius:8px;background:#176b8c;color:#fff;font-weight:800;text-decoration:none}';document.head.appendChild(terraClaimCss);
   async function loadPlayerMissions(){const data=await api('/api/missions');const deliveries=data.progress?.terraDeliveries||[];$('cat-mission-list').innerHTML=data.missions.map(m=>{const done=(data.progress.completedMissions||[]).includes(m.id);const r=m.rewards||{};const externalIds=Array.isArray(r.externalRewardIds)?r.externalRewardIds:[];const deliveryHtml=externalIds.map(id=>{const item=(data.externalRewards||[]).find(x=>x.id===id);const state=deliveries.find(x=>x.missionId===m.id&&x.rewardId===id);const label=state?.status==='delivered'?'✅ TERRACARDへ受取済み':(state?.status==='claimable'?'🎁 TERRACARDで受取可能':(state?'⏳ TERRACARDへ送信待ち':(done?'⏳ 送信準備中':'クリア後に送信')));const claim=state?.status==='claimable'&&state.claimUrl?'<a href="https://cosmosapr3-code.github.io/terracardgame/?cat_reward='+encodeURIComponent(state.claimUrl)+'" target="_blank" rel="noopener" class="cat-tools-claim">TERRACARDで受け取る →</a>':'';return '<div class="cat-tools-note">🎁 '+esc(item?.name||id)+'：'+label+'</div>'+claim;}).join('');return '<article class="cat-tools-mission '+(done?'done':'')+'"><b>'+(done?'✅ ':'')+esc(m.title)+'</b><p class="cat-tools-note">'+esc(m.description||'')+'</p><small>条件：'+esc(m.stageName||m.stageId||'ステージ勝利')+' / 報酬：XP '+Number(r.xp||0)+'・CATチュール '+Number(r.catChuru||0)+'</small>'+deliveryHtml+'<div class="cat-tools-note">'+(done?'達成済み':'未達成')+'</div></article>';}).join('');const owned=(data.progress.ownedExternalRewards||[]).map(id=>data.externalRewards.find(item=>item.id===id)).filter(Boolean);$('cat-owned-external-rewards').innerHTML=owned.length?owned.map(item=>'<div class="cat-tools-card"><img src="'+esc(item.image)+'" alt="'+esc(item.name)+'"><div><b>'+esc(item.name)+'</b><p class="cat-tools-note">'+esc(item.description)+'</p></div></div>').join(''):'<p class="cat-tools-note">まだ別ゲーム用の報酬を持っていません。</p>';}
+  async function loadAdminRewardDeliveries(){
+    const data=await api('/api/admin/terra-rewards');
+    const counts=data.counts||{};
+    $('cat-terra-delivery-summary').textContent='直近'+Number(counts.total||0)+'件：受取済み '+Number(counts.delivered||0)+'件 / TERRACARDで受取待ち '+Number(counts.claimable||0)+'件 / 要確認 '+Number(counts.needsAttention||0)+'件';
+    const items=data.items||[];
+    $('cat-terra-delivery-list').innerHTML=items.length?items.map(item=>{
+      const date=item.createdAt?new Date(Number(item.createdAt)*1000).toLocaleString('ja-JP'):'日時不明';
+      const error=item.lastError?'<small>エラー：'+esc(item.lastError)+'</small>':'';
+      return '<article class="cat-terra-delivery-row"><b>'+esc(item.statusLabel||item.status)+'</b>　'+esc(item.username||'ユーザー不明')+'<div>'+esc(item.rewardName||item.rewardId||'報酬不明')+' / '+esc(item.missionTitle||item.missionId||'ミッション不明')+'</div><small>作成：'+esc(date)+' / 試行回数：'+Number(item.attempts||0)+'</small>'+error+'</article>';
+    }).join(''):'<p class="cat-tools-note">報酬配達記録がありません。</p>';
+    return data;
+  }
   async function loadAdminPanel(){
     // 配布に必須なのはキャラ一覧とプレイヤー一覧。ミッション/TERRAの失敗で配布欄を止めない。
     const [c,p]=await Promise.all([api('/api/admin/catalog'),api('/api/admin/players')]);
@@ -520,6 +542,15 @@
       button.disabled=false;
       button.textContent='この内容を配布';
     }
+  });
+  $('cat-terra-delivery-refresh').addEventListener('click',async()=>{
+    const button=$('cat-terra-delivery-refresh'),before=button.textContent;
+    button.disabled=true;button.textContent='照合中…';
+    try{
+      await loadAdminRewardDeliveries();
+    }catch(e){
+      $('cat-terra-delivery-summary').textContent='受取状況を読み込めませんでした：'+e.message;
+    }finally{button.disabled=false;button.textContent=before;}
   });
   $('cat-missions-refresh').addEventListener('click',async()=>{
     const button=$('cat-missions-refresh'),before=button.textContent;
