@@ -15,28 +15,6 @@ def get_list(target, name):
             return value[1]
     return []
 
-def get_named_list(targets, name):
-    """Find the canonical display-name list used by the original gacha/encyclopedia."""
-    preferred = targets.get("Stage", {})
-    values = get_list(preferred, name)
-    if values:
-        return values
-    for target in targets.values():
-        values = get_list(target, name)
-        if values:
-            return values
-    return []
-
-def clean_display_name(value, internal_code):
-    text = str(value or "").strip()
-    if not text or text.lower() in {"undefined", "null", "none"}:
-        return ""
-    if text == str(internal_code or "").strip():
-        return ""
-    if re.fullmatch(r"(?:味方|敵)\s*[a-z0-9_-]+", text, re.I):
-        return ""
-    return text
-
 def numbers(values, default=0):
     out = []
     for value in values:
@@ -190,13 +168,6 @@ def main():
     targets = {t["name"]:t for t in project["targets"]}
     stage = targets["Stage"]; cache = {}
     allies = get_list(stage,"味方"); enemies = get_list(stage,"teki")
-    # Exact display-name arrays used by the original gacha and enemy encyclopedia.
-    ally_display_names = get_named_list(targets, "味方キャラ名前")
-    enemy_display_names = get_named_list(targets, "敵キャラクター図鑑")
-    if len(ally_display_names) < len(allies):
-        raise RuntimeError(f"Could not recover all original gacha names: {len(ally_display_names)}/{len(allies)}")
-    if len(enemy_display_names) < len(enemies):
-        raise RuntimeError(f"Could not recover all original encyclopedia names: {len(enemy_display_names)}/{len(enemies)}")
     ally_prices = extract_ally_prices(targets.get("パネル", {}))
     if len(ally_prices) < len(allies):
         missing = [code for code in allies if code not in ally_prices]
@@ -214,9 +185,6 @@ def main():
     evolvable={code for i,code in enumerate(evo_order) if i<len(evo_flags) and str(evo_flags[i])=="1"}
     chars=[]
     for i,code in enumerate(allies):
-        display_name = clean_display_name(ally_display_names[i], code)
-        if not display_name:
-            raise RuntimeError(f"Missing original gacha name for ally ID {code!r} at position {i+1}")
         child=next((base for base,forms in evolution_map.items() if code!=base and code in forms[1:]),None)
         forms=[]
         for level,form_code in enumerate(evolution_map.get(code,[code]),1):
@@ -231,7 +199,7 @@ def main():
         ally_frames=animation_frames(archive,targets,["mikata","mikata2"],code,(88,88),60,cache)
         ally_walk,ally_attack=split_animation(ally_frames,ally_image)
         chars.append({
-          "id":ally_id(code),"name":display_name,"displayName":display_name,"originalName":display_name,"gachaName":display_name,"legacyCode":code,"side":"ally",
+          "id":ally_id(code),"name":f"味方 {code}","legacyCode":code,"side":"ally",
           "hp":max(1,round(ahp[i])) if i<len(ahp) else 1000,
           "attack":max(1,round(abs(atk[i]))) if i<len(atk) else 100,
           "kb":max(0,round(akb[i])) if i<len(akb) else 1,
@@ -258,9 +226,6 @@ def main():
     si={c:i for i,c in enumerate(scodes)}; pi={c:i for i,c in enumerate(pcodes)}
     enemies_out=[]
     for i,code in enumerate(enemies):
-        display_name = clean_display_name(enemy_display_names[i], code)
-        if not display_name:
-            raise RuntimeError(f"Missing original encyclopedia name for enemy ID {code!r} at position {i+1}")
         if i<30: source="z"; hp=zhp[i] if i<len(zhp) else 1000; kb=zkb[i] if i<len(zkb) else 2
         elif i in list(range(30,48))+[59,60,67,68]:
             source="味方?teki?キャラ"; j=si.get(code,i-30); hp=shp[j] if j<len(shp) else 5000; kb=2
@@ -270,7 +235,7 @@ def main():
         enemy_frames=animation_frames(archive,targets,[source],code,(88,88),60,cache)
         enemy_walk,enemy_attack=split_animation(enemy_frames,data_uri(archive,targets,source,code,(64,64),64,cache))
         enemies_out.append({
-          "id":uid,"name":display_name,"displayName":display_name,"originalName":display_name,"encyclopediaName":display_name,"legacyCode":code,"side":"enemy",
+          "id":uid,"name":(str(code) if any("\\u3040" <= ch <= "\\u30ff" or "\\u4e00" <= ch <= "\\u9fff" for ch in str(code)) else f"敵 {code}"),"legacyCode":code,"side":"enemy",
           "hp":max(1,round(hp)),"attack":max(1,round(atk_by.get(code,100))),
           "kb":max(0,round(kb)),"range":100,"speed":18,"cost":0,"cooldown":3,
           "reward":max(5,round(cash[i])) if i<len(cash) else 30,
