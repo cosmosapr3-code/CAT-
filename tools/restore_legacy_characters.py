@@ -261,6 +261,8 @@ def main():
         for costume in gacha_target.get("costumes", [])
     }
     ally_names = {code: name for code, name in ally_names.items() if name}
+    print("Recovered ally names from gacha SVGs: " + str(len(ally_names)) + " / " + str(len(allies)))
+    print("Gacha name map: " + json.dumps(ally_names, ensure_ascii=False, sort_keys=True))
 
     # The original production panel stores its gauge growth rate by the
     # Stage "mikata!" order. Convert that rate into an estimated seconds value
