@@ -47,12 +47,20 @@
 .cat-multi-option{display:flex;gap:8px;align-items:center;min-width:0;padding:7px;border:1px solid #4a4031;border-radius:7px;background:#1b1b1b;color:#eee;font-size:12px;cursor:pointer}
 .cat-multi-option input[type=checkbox]{width:17px;height:17px;flex:0 0 auto;accent-color:#d6a64e}
 .cat-multi-option span{overflow-wrap:anywhere}
-.cat-terra-enemy-row{display:grid;grid-template-columns:minmax(150px,2fr) repeat(3,minmax(75px,1fr));gap:7px;align-items:center;padding:7px;border-bottom:1px solid #403628}
-.cat-terra-enemy-row label{display:flex;gap:7px;align-items:center;font-size:12px;min-width:0}
-.cat-terra-enemy-row input[type=number]{width:100%;min-width:0;padding:7px;border:1px solid #655238;border-radius:6px;background:#080808;color:#fff}
-.cat-terra-enemy-row input[type=checkbox]{width:17px;height:17px;accent-color:#d6a64e}
-.cat-terra-enemy-head{display:grid;grid-template-columns:minmax(150px,2fr) repeat(3,minmax(75px,1fr));gap:7px;color:#d8c29a;font-size:10px;padding:4px 7px}
-@media(max-width:600px){.cat-multi-toolbar{grid-template-columns:1fr 1fr}.cat-multi-toolbar input{grid-column:1/-1}.cat-terra-enemy-row,.cat-terra-enemy-head{grid-template-columns:minmax(120px,1.4fr) repeat(3,minmax(58px,1fr));gap:4px}.cat-terra-enemy-row input[type=number]{padding:5px;font-size:11px}}
+.cat-terra-enemy-row{display:grid;grid-template-columns:minmax(0,1fr);gap:9px;padding:11px;border:1px solid #403628;border-radius:9px;margin:7px 0;background:#17140f}
+.cat-terra-enemy-row[hidden]{display:none!important}
+.cat-terra-enemy-name{display:flex;gap:9px;align-items:center;min-width:0;color:#fff;font-size:13px}
+.cat-terra-enemy-name input{width:18px;height:18px;flex:0 0 auto;accent-color:#d6a64e}
+.cat-terra-section-title{grid-column:1/-1;color:#e1c99e;font-size:11px;font-weight:800;border-bottom:1px solid #55452e;padding:2px 0 5px}
+.cat-terra-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;min-width:0}
+.cat-terra-field{display:grid;gap:4px;min-width:0;color:#d9cfbb;font-size:11px;font-weight:700}
+.cat-terra-field input,.cat-terra-field select{width:100%;min-width:0;box-sizing:border-box;padding:8px 6px;border:1px solid #655238;border-radius:6px;background:#080808;color:#fff;font:inherit;font-variant-numeric:tabular-nums}
+.cat-terra-field[hidden]{display:none!important}
+.cat-terra-flags{display:flex;flex-wrap:wrap;gap:12px}
+.cat-terra-flag{display:flex;gap:6px;align-items:center;color:#f0dfbd;font-size:11px}
+.cat-terra-flag input{width:17px;height:17px;accent-color:#d6a64e}
+@media(max-width:720px){.cat-terra-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:420px){.cat-terra-fields{grid-template-columns:minmax(0,1fr)}}
 .cat-tools-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
 .cat-tools-note{font-size:12px;color:#c9bda8;line-height:1.5}
 #cat-character-stats-editor .cat-tools-row{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
@@ -143,9 +151,9 @@
     </div>
     <div class="cat-tools-section" id="cat-terra-stage-editor">
       <h3>🏟️ TERRA CARDステージ設定</h3>
-      <p class="cat-tools-note">CAT大戦争内に追加するステージです。選んだ敵キャラクターが順番に登場し、倍率が敵の強さに反映されます。</p>
+      <p class="cat-tools-note">敵ごとに出現条件・時間・城HP条件・出現確率・出現数・間隔を設定できます。体力／攻撃倍率は敵個別倍率×ステージ共通倍率で計算します。</p>
       <label class="cat-tools-field">敵キャラクター・1種類ごとの出現数／個別倍率<div id="cat-terra-enemies" class="cat-multi"></div></label>
-      <label class="cat-tools-field">ステージ全体の倍率（0.1〜100）<input id="cat-terra-multiplier" type="number" min="0.1" max="100" step="0.1" value="1"></label>
+      <label class="cat-tools-field">ステージ共通倍率（個別の体力・攻撃倍率に乗算／0.1〜100）<input id="cat-terra-multiplier" type="number" min="0.1" max="100" step="0.1" value="1"></label>
       <button id="cat-terra-save" class="cat-tools-action" type="button">TERRA CARDステージを保存</button>
       <p id="cat-terra-status" class="cat-tools-note">現在の設定を読み込み中…</p>
     </div>
@@ -207,24 +215,59 @@
   function renderTerraEnemyOptions(enemies,waves=[]){
     const root=$('cat-terra-enemies');if(!root)return;
     const byId=new Map((waves||[]).map(w=>[String(w.characterId),w]));
-    const rows=(enemies||[]).map(enemy=>{
+    const rows=(enemies||[]).map((enemy,index)=>{
       const wave=byId.get(String(enemy.id))||{};
-      return '<div class="cat-terra-enemy-row" data-terra-enemy-row><label><input type="checkbox" data-terra-enemy value="'+esc(enemy.id)+'" '+(byId.has(String(enemy.id))?'checked':'')+'><span>'+esc(enemy.name)+'</span></label><input aria-label="出現数" title="出現数" type="number" data-terra-count min="1" max="1000" step="1" value="'+Math.max(1,Math.min(1000,Number(wave.count)||1))+'"><input aria-label="体力倍率" title="体力倍率" type="number" data-terra-hp min="0.1" max="1000" step="0.1" value="'+Math.max(0.1,Math.min(1000,Number(wave.hpMultiplier)||1))+'"><input aria-label="攻撃倍率" title="攻撃倍率" type="number" data-terra-attack min="0.1" max="1000" step="0.1" value="'+Math.max(0.1,Math.min(1000,Number(wave.attackMultiplier)||1))+'"></div>';
+      const trigger=['time','enemy_base','player_base'].includes(wave.trigger)?wave.trigger:'time';
+      const boss=wave.boss===true,shockwave=wave.shockwave===true;
+      const number=(value,fallback,min,max)=>Math.max(min,Math.min(max,Number.isFinite(Number(value))?Number(value):fallback));
+      return '<article class="cat-terra-enemy-row" data-terra-enemy-row><label class="cat-terra-enemy-name"><input type="checkbox" data-terra-enemy value="'+esc(enemy.id)+'" '+(byId.has(String(enemy.id))?'checked':'')+'><span>'+esc(enemy.name)+'</span></label>'+
+        '<div class="cat-terra-fields"><div class="cat-terra-section-title">出現条件・頻度</div>'+
+        '<label class="cat-terra-field">出現条件<select data-terra-trigger><option value="time" '+(trigger==='time'?'selected':'')+'>時間経過</option><option value="enemy_base" '+(trigger==='enemy_base'?'selected':'')+'>敵城HP連動</option><option value="player_base" '+(trigger==='player_base'?'selected':'')+'>自城HP連動</option></select></label>'+
+        '<label class="cat-terra-field" data-terra-at-field '+(trigger!=='time'?'hidden':'')+'>出現開始時間（秒）<input data-terra-at type="number" min="0" max="86400" step="1" value="'+number(wave.at,4+index*12,0,86400)+'"></label>'+
+        '<label class="cat-terra-field" data-terra-castle-field '+(trigger==='time'?'hidden':'')+'>城HPがこの割合以下（%）<input data-terra-castle type="number" min="1" max="100" step="1" value="'+number(wave.castleHpPercent,50,1,100)+'"></label>'+
+        '<label class="cat-terra-field">出現数（体）<input data-terra-count type="number" min="1" max="1000" step="1" value="'+number(wave.count,1,1,1000)+'"></label>'+
+        '<label class="cat-terra-field">再出現間隔（秒）<input data-terra-interval type="number" min="1" max="3600" step="1" value="'+number(wave.interval,18,1,3600)+'"></label>'+
+        '<label class="cat-terra-field">出現確率（%）<input data-terra-chance type="number" min="1" max="100" step="1" value="'+number(wave.spawnChance,100,1,100)+'"></label>'+
+        '<div class="cat-terra-section-title">敵の強さ（個別倍率）</div>'+
+        '<label class="cat-terra-field">体力倍率（×）<input data-terra-hp type="number" min="0.1" max="1000" step="0.1" value="'+number(wave.hpMultiplier,1,0.1,1000)+'"></label>'+
+        '<label class="cat-terra-field">攻撃倍率（×）<input data-terra-attack type="number" min="0.1" max="1000" step="0.1" value="'+number(wave.attackMultiplier,1,0.1,1000)+'"></label></div>'+
+        '<div class="cat-terra-flags"><label class="cat-terra-flag"><input type="checkbox" data-terra-boss '+(boss?'checked':'')+'>ボスとして出現</label><label class="cat-terra-flag"><input type="checkbox" data-terra-shockwave '+(shockwave?'checked':'')+' '+(!boss?'disabled':'')+'>登場時に衝撃波</label></div></article>';
     }).join('');
-    root.innerHTML='<div class="cat-multi-toolbar"><input type="search" data-terra-search placeholder="敵の名前で検索"><button type="button" data-terra-all>表示中を全選択</button><button type="button" data-terra-clear>全解除</button><span class="cat-multi-count" data-terra-count></span></div><div class="cat-terra-enemy-head"><span>敵キャラクター</span><span>出現数</span><span>体力倍率</span><span>攻撃倍率</span></div><div class="cat-multi-options">'+(rows||'<span class="cat-tools-note">敵キャラクターがありません。</span>')+'</div>';
+    root.innerHTML='<div class="cat-multi-toolbar"><input type="search" data-terra-search placeholder="敵の名前で検索"><button type="button" data-terra-all>表示中を全選択</button><button type="button" data-terra-clear>全解除</button><span class="cat-multi-count" data-terra-count></span></div><div class="cat-multi-options">'+(rows||'<span class="cat-tools-note">敵キャラクターがありません。</span>')+'</div>';
     const update=()=>{const n=root.querySelectorAll('[data-terra-enemy]:checked').length;root.querySelector('[data-terra-count]').textContent=n+'種類選択中';};
+    const updateRow=row=>{
+      const trigger=row.querySelector('[data-terra-trigger]').value;
+      row.querySelector('[data-terra-at-field]').hidden=trigger!=='time';
+      row.querySelector('[data-terra-castle-field]').hidden=trigger==='time';
+      const boss=row.querySelector('[data-terra-boss]').checked;
+      const shockwave=row.querySelector('[data-terra-shockwave]');
+      shockwave.disabled=!boss;
+      if(!boss)shockwave.checked=false;
+    };
     root.querySelector('[data-terra-search]').addEventListener('input',event=>{const q=event.target.value.trim().toLocaleLowerCase();root.querySelectorAll('[data-terra-enemy-row]').forEach(row=>row.hidden=!row.textContent.toLocaleLowerCase().includes(q));});
     root.querySelector('[data-terra-all]').addEventListener('click',()=>{root.querySelectorAll('[data-terra-enemy-row]:not([hidden]) [data-terra-enemy]').forEach(x=>x.checked=true);update();});
     root.querySelector('[data-terra-clear]').addEventListener('click',()=>{root.querySelectorAll('[data-terra-enemy]').forEach(x=>x.checked=false);update();});
-    root.querySelectorAll('[data-terra-enemy]').forEach(x=>x.addEventListener('change',update));update();
+    root.querySelectorAll('[data-terra-enemy-row]').forEach(row=>{
+      row.querySelector('[data-terra-enemy]').addEventListener('change',update);
+      row.querySelector('[data-terra-trigger]').addEventListener('change',()=>updateRow(row));
+      row.querySelector('[data-terra-boss]').addEventListener('change',()=>updateRow(row));
+      updateRow(row);
+    });
+    update();
   }
   function selectedTerraWaves(){
-    return [...$('cat-terra-enemies').querySelectorAll('[data-terra-enemy-row]')].filter(row=>row.querySelector('[data-terra-enemy]').checked).map((row,index)=>({
+    return [...$('cat-terra-enemies').querySelectorAll('[data-terra-enemy-row]')].filter(row=>row.querySelector('[data-terra-enemy]').checked).map(row=>({
       characterId:row.querySelector('[data-terra-enemy]').value,
+      trigger:row.querySelector('[data-terra-trigger]').value,
+      at:Number(row.querySelector('[data-terra-at]').value),
+      castleHpPercent:Number(row.querySelector('[data-terra-castle]').value),
       count:Number(row.querySelector('[data-terra-count]').value),
+      interval:Number(row.querySelector('[data-terra-interval]').value),
+      spawnChance:Number(row.querySelector('[data-terra-chance]').value),
       hpMultiplier:Number(row.querySelector('[data-terra-hp]').value),
       attackMultiplier:Number(row.querySelector('[data-terra-attack]').value),
-      at:4+index*12,interval:18
+      boss:row.querySelector('[data-terra-boss]').checked,
+      shockwave:row.querySelector('[data-terra-shockwave]').checked
     }));
   }
   async function reportStageWin(stageId,legacyCode,stageName){if(!auth||auth.role!=='player'||(!stageId&&!legacyCode&&!stageName))return null;const result=await api('/api/missions/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stageId,legacyCode,stageName})});if(result.completed?.length){toolsError.textContent='ミッション達成！報酬を受け取りました。';if(!toolsPanel.hidden)await loadPlayerMissions();}return result;}
@@ -310,12 +353,12 @@
       const enemyWaves=selectedTerraWaves();
       const multiplier=Number($('cat-terra-multiplier').value||1);
       if(!enemyWaves.length)throw new Error('敵キャラクターを1体以上選んでください。');
-      if(enemyWaves.some(w=>!Number.isInteger(w.count)||w.count<1||w.count>1000||!Number.isFinite(w.hpMultiplier)||w.hpMultiplier<0.1||w.hpMultiplier>1000||!Number.isFinite(w.attackMultiplier)||w.attackMultiplier<0.1||w.attackMultiplier>1000))throw new Error('出現数は1〜1000、体力・攻撃倍率は0.1〜1000で指定してください。');
+      if(enemyWaves.some(w=>!Number.isInteger(w.count)||w.count<1||w.count>1000||!Number.isInteger(w.at)||w.at<0||w.at>86400||!Number.isInteger(w.interval)||w.interval<1||w.interval>3600||!Number.isFinite(w.spawnChance)||w.spawnChance<1||w.spawnChance>100||!Number.isFinite(w.castleHpPercent)||w.castleHpPercent<1||w.castleHpPercent>100||!['time','enemy_base','player_base'].includes(w.trigger)||!Number.isFinite(w.hpMultiplier)||w.hpMultiplier<0.1||w.hpMultiplier>1000||!Number.isFinite(w.attackMultiplier)||w.attackMultiplier<0.1||w.attackMultiplier>1000))throw new Error('時間は0〜86400秒、間隔は1〜3600秒、確率は1〜100%、城HP条件は1〜100%、出現数は1〜1000体、個別倍率は0.1〜1000で指定してください。');
       if(!Number.isFinite(multiplier)||multiplier<0.1||multiplier>100)throw new Error('ステージ倍率は0.1〜100で指定してください。');
       button.disabled=true;button.textContent='保存中…';
       const result=await api('/api/admin/terra-stage',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enemyWaves,multiplier})});
       const total=result.stage.enemyWaves.reduce((sum,w)=>sum+Number(w.count||1),0);
-      $('cat-terra-status').textContent='保存しました：敵 '+result.stage.enemyWaves.length+'種類 / 合計 '+total+'体 / ステージ倍率 ×'+result.stage.multiplier+'。第3章に「TERRA CARD」が追加されます。';
+      $('cat-terra-status').textContent='保存しました：敵 '+result.stage.enemyWaves.length+'種類 / 最大出現数 '+total+'体 / 時間・城HP条件・出現確率・ボス演出を保存。ステージ共通倍率 ×'+result.stage.multiplier+'。第3章に「TERRA CARD」が追加されます。';
       await loadAdminPanel();
     }catch(e){$('cat-terra-status').textContent='保存に失敗しました：'+e.message;}
     finally{button.disabled=false;button.textContent='TERRA CARDステージを保存';}
