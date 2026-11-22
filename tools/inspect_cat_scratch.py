@@ -170,7 +170,12 @@ summary["say_and_think_blocks"] = say_blocks[:1000]
 
 # Trace the actual Scratch data blocks for player-owned character lists and
 # currency variables. These records determine how server rewards are applied.
-focus_names = {"味方", "味方キャラ名前", "CAT軍団のレベルセーブ用", "味方キャラ", "経験値", "catチュール", "セーブ？"}
+focus_names = {
+    "味方", "味方キャラ名前", "CAT軍団のレベルセーブ用", "味方キャラ",
+    "経験値", "catチュール", "セーブ？", "getto", "kosu", "出陣",
+    "mikata!", "mikatakyara", "パワーアップセーブ", "〇現時点のlevel",
+    "〇そのキャラの必須経験値", "何ゲット？"
+}
 summary["profile_data_blocks"] = []
 for target in targets:
     blocks = target.get("blocks", {})
