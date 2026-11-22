@@ -328,14 +328,14 @@
 
     for(const st of battle.waveState){
       const w=st.wave,trigger=w.trigger||'time';
-      const threshold=Math.max(1,Math.min(100,Number(w.castleHpPercent??50)))*50;
+      const threshold=Math.max(0,Math.min(100,Number(w.castleHpPercent??50)))*50;
       const castleReady=trigger==='enemy_base'?battle.enemyBase<=threshold:
         trigger==='player_base'?battle.playerBase<=threshold:true;
       const ready=trigger==='time'?battle.time>=st.next:(castleReady&&battle.time>=st.next);
       if(st.spawned<Number(w.count||1)&&ready){
         const c=charById(w.characterId);
         if(c&&c.side==='enemy'){
-          const chance=Math.max(1,Math.min(100,Number(w.spawnChance??100)));
+          const chance=Math.max(.1,Math.min(100,Number(w.spawnChance??100)));
           if(Math.random()*100<chance){
             const lane=(st.spawned%3)*13;
             const e=makeUnit(c,'enemy',824+Math.random()*8);
