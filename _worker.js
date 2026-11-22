@@ -908,7 +908,12 @@ async function handleApi(request, env) {
     return json({
       role: "player",
       username: s.username,
-      profile
+      profile,
+      // Only the small ID-to-Scratch-code mapping is sent to the game bridge;
+      // never send the image/frame payload in the profile response.
+      legacyCharacterCodes: (config.characters || [])
+        .filter(character => character.side === "ally" && character.legacyCode)
+        .map(character => ({ id: character.id, legacyCode: String(character.legacyCode) }))
     });
   }
 
@@ -1542,6 +1547,80 @@ if (request.method === "GET" && decodeURIComponent(url.pathname) === "/CAT大戦
   const readyMarker = "loadingScreen.hidden = true;";
   if (!html.includes(readyMarker)) return new Response("元ゲームの読み込み完了位置を確認できませんでした。", { status: 500 });
   html = html.replace(readyMarker, readyMarker + " window.CAT_SCRATCH_READY = true;");
+
+  // Synchronize operator grants from D1 into the original Scratch game's own
+  // variables/lists after the logged-in profile is available. Scratch stores
+  // ownership by legacy character code in both "getto" and "kosu".
+  const profileBridge = String.raw`<script id="cat-server-profile-bridge">
+  (() => {
+    if (window.__CAT_PROFILE_BRIDGE_INSTALLED) return;
+    window.__CAT_PROFILE_BRIDGE_INSTALLED = true;
+    let syncing = false;
+    const findStage = () => window.scaffolding?.vm?.runtime?.targets?.find(target => target && target.isStage) || null;
+    const findNamed = (stage, name) => Object.values(stage?.variables || {}).find(item => item && item.name === name) || null;
+    const mergeList = (stage, name, values) => {
+      const item = findNamed(stage, name);
+      if (!item || !Array.isArray(item.value)) return false;
+      const merged = [...item.value];
+      const seen = new Set(merged.map(String));
+      for (const value of values) {
+        const key = String(value);
+        if (key && !seen.has(key)) { merged.push(key); seen.add(key); }
+      }
+      item.value.splice(0, item.value.length, ...merged);
+      return true;
+    };
+    async function sync() {
+      if (syncing || window.CAT_PROFILE_SYNCED) return;
+      syncing = true;
+      try {
+        const response = await fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' });
+        if (!response.ok) throw new Error('profile HTTP ' + response.status);
+        const data = await response.json();
+        if (data.role !== 'player' || !data.profile) return;
+        let stage = null;
+        for (let attempt = 0; attempt < 80; attempt++) {
+          stage = findStage();
+          if (stage && findNamed(stage, '経験値') && findNamed(stage, 'catチュール') &&
+              findNamed(stage, 'getto') && findNamed(stage, 'kosu')) break;
+          await new Promise(resolve => setTimeout(resolve, 150));
+        }
+        if (!stage) throw new Error('Scratch stage not ready');
+        const profile = data.profile;
+        const currentXp = Number(findNamed(stage, '経験値')?.value || 0);
+        const currentChuru = Number(findNamed(stage, 'catチュール')?.value || 0);
+        const serverXp = Math.max(0, Math.floor(Number(profile.xp) || 0));
+        const serverChuru = Math.max(0, Math.floor(Number(profile.catChuru) || 0));
+        // Never reduce an already higher locally saved balance.
+        findNamed(stage, '経験値').value = Math.max(currentXp, serverXp);
+        findNamed(stage, 'catチュール').value = Math.max(currentChuru, serverChuru);
+        const codeById = new Map((data.legacyCharacterCodes || []).map(item => [item.id, String(item.legacyCode)]));
+        const ownedCodes = (Array.isArray(profile.owned) ? profile.owned : [])
+          .map(id => codeById.get(id)).filter(Boolean);
+        mergeList(stage, 'getto', ownedCodes);
+        mergeList(stage, 'kosu', ownedCodes);
+        window.CAT_PROFILE_SYNCED = true;
+        window.CAT_PROFILE_SYNC_RESULT = {
+          xp: Math.max(currentXp, serverXp),
+          catChuru: Math.max(currentChuru, serverChuru),
+          addedCharacters: ownedCodes.length
+        };
+        console.info('[CAT] D1 profile synchronized', window.CAT_PROFILE_SYNC_RESULT);
+      } catch (error) {
+        console.warn('[CAT] D1 profile sync failed:', error);
+      } finally {
+        syncing = false;
+      }
+    }
+    window.addEventListener('CAT_AUTH_READY', event => {
+      if (event?.detail?.role === 'player') sync();
+    });
+    if (window.CAT_AUTH?.role === 'player') sync();
+  })();
+  </script>`;
+  if (!html.includes('cat-server-profile-bridge')) {
+    html = html.replace('</body>', profileBridge + '</body>');
+  }
   const headers = new Headers(gameResponse.headers);
   headers.delete("content-length"); headers.delete("content-encoding"); headers.delete("etag");
   headers.set("Cache-Control", "no-store");
