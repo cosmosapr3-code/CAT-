@@ -499,7 +499,7 @@ function checkSameOrigin(request) {
 const EXTERNAL_REWARD_CATALOG = [{
   id: "external-reward-cat-kanzen",
   name: "CAT完全体",
-  image: "/assets/cards/cat-kanzen.webp",
+  image: "/assets/cards/cat-kanzen-hd.webp",
   description: "別ゲーム用カード報酬。CAT大戦争の戦闘では使用しません。",
   originalEffect: "scratch属性のカードを2枚ずつ加え、コストを0にして効果を10倍にする。相手に10ダメージ、50%で自分に5ダメージ"
 }];
