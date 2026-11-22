@@ -389,6 +389,56 @@ summary["focused_stat_lists"] = {
 summary["focused_name_blocks"] = []
 # Capture complete Scratch scripts that reference unit stats, prices, and UI-name values.
 summary["focused_stat_scripts"] = []
+summary["focused_name_data"] = {
+    "lists": {},
+    "variables": {},
+    "blocks": []
+}
+name_data_targets = {"Stage", "ガチャ", "中身", "図鑑", "パネル", "編成表"}
+name_data_terms = {"名前", "敵名", "敵コスト", "名前のコストリスト",
+                   "mikatakyara", "味方キャラ名前", "敵キャラクター図鑑",
+                   "敵名前", "出てくる敵の名前", "pの数", "コスト"}
+for target in targets:
+    target_name = target.get("name", "")
+    if target_name not in name_data_targets:
+        continue
+    summary["focused_name_data"]["lists"][target_name] = {
+        item[0]: item[1] for item in target.get("lists", {}).values()
+        if item[0] in name_data_terms
+    }
+    summary["focused_name_data"]["variables"][target_name] = {
+        item[0]: item[1] for item in target.get("variables", {}).values()
+        if item[0] in name_data_terms
+    }
+    blocks = target.get("blocks", {})
+    relevant = set()
+    for block_id, block in blocks.items():
+        if not isinstance(block, dict):
+            continue
+        literals = collect_literals(block.get("fields", {})) + collect_literals(block.get("inputs", {}))
+        if any(value in name_data_terms for value in literals):
+            relevant.add(block_id)
+    roots = set()
+    for block_id in relevant:
+        current = blocks.get(block_id)
+        seen = set()
+        while isinstance(current, dict) and current.get("parent") and current["parent"] not in seen:
+            seen.add(current["parent"])
+            current = blocks.get(current["parent"])
+        if isinstance(current, dict) and current.get("topLevel"):
+            roots.add(next((key for key, value in blocks.items() if value is current), block_id))
+    for root_id in sorted(roots):
+        nodes = block_tree(blocks, root_id)
+        summary["focused_name_data"]["blocks"].append({
+            "target": target_name, "root": root_id,
+            "blocks": [{
+                "id": bid, "opcode": block.get("opcode", ""),
+                "mutation": block.get("mutation", {}),
+                "fields": block.get("fields", {}), "inputs": block.get("inputs", {}),
+                "next": block.get("next"), "parent": block.get("parent")
+            } for bid, block in nodes]
+        })
+
 summary["focused_ui_name_scripts"] = []
 ui_targets = {"ガチャ", "中身", "図鑑", "編成表", "Stage", "パネル"}
 name_markers = {"namae", "敵名前", "味方キャラ名前", "敵キャラクター図鑑", "味方", "teki"}
