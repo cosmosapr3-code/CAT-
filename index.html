@@ -117,9 +117,9 @@
     <label class="cat-tools-field">配布先プレイヤー（ステージを追加するユーザー）<select id="cat-admin-player"></select></label>
     <div class="cat-tools-row"><label class="cat-tools-field">追加する経験値<input id="cat-grant-xp" type="number" min="0" max="1000000000" value="0"></label><label class="cat-tools-field">追加するCATチュール<input id="cat-grant-churu" type="number" min="0" max="1000000000" value="0"></label></div>
     <div class="cat-tools-row"><label class="cat-tools-field">配布キャラクター<div id="cat-grant-characters" class="cat-multi"></div></label><label class="cat-tools-field">このユーザーに追加するステージ<div id="cat-grant-stages" class="cat-multi"></div></label><label class="cat-tools-field">TERRACARDへ送るカード報酬<div id="cat-grant-external-rewards" class="cat-multi"></div></label></div>
-    <label class="cat-tools-field">このユーザーに開放する章（選んだ章のステージもまとめて開放）<div id="cat-grant-chapters" class="cat-multi"></div></label>
+    <label class="cat-tools-field">ゲーム開始後の章選択で開放する章（第1〜4章）<div id="cat-grant-chapters" class="cat-multi"></div></label>
     <button id="cat-grant-submit" class="cat-tools-action" type="button">この内容を配布</button>
-    <p class="cat-tools-note">章を選ぶと、その章がプレイヤーに表示され、章内の全ステージが開放されます。個別ステージの開放とは別々に設定できます。</p>
+    <p class="cat-tools-note">ここで選ぶのは、ゲーム起動後に表示される「第一章・第二章・第三章・第四章」の開放です。選んだ章は、そのユーザーのScratch本体の章選択画面に反映されます。ステージ個別開放とは別の設定です。</p>
     <div class="cat-tools-section" id="cat-character-stats-editor">
       <h3>⚙️ 全キャラクターの能力値を編集</h3>
       <p class="cat-tools-note">味方・敵の体力、攻撃力、移動速度、攻撃間隔、射程、KBを個別に変更できます。味方だけ生産価格・再生産時間も変更できます。保存内容はD1に記録します。</p>
@@ -291,7 +291,7 @@
     const [c,p]=await Promise.all([api('/api/admin/catalog'),api('/api/admin/players')]);
     adminCatalog=c;
     const chars=c.characters||[],enemies=c.enemies||[],stages=c.stages||[];
-    const playerOptions=(p.players||[]).map(x=>({...x,displayName:x.username+'（XP '+Number(x.xp||0)+' / CAT '+Number(x.catChuru||0)+'）'}));
+    const playerOptions=(p.players||[]).map(x=>({...x,displayName:x.username+'（XP '+Number(x.xp||0)+' / CAT '+Number(x.catChuru||0)+' / 章 '+Number(x.unlockedChapterCount||0)+'/4）'}));
     $('cat-admin-player').innerHTML=optionsHtml(playerOptions,'id','displayName',true);
     const charOptions=chars.map(x=>({...x,displayName:x.name+(x.legacyCode?' ['+x.legacyCode+']':'')}));
     renderMultiSelect('cat-grant-characters',charOptions,'id','displayName');
@@ -467,7 +467,7 @@
       if(selectedPlayer){
         const keep=playerId;
         $('cat-admin-player').innerHTML=optionsHtml(
-          updated.players.map(x=>({...x,displayName:x.username+'（XP '+Number(x.xp||0)+' / CAT '+Number(x.catChuru||0)+'）'})),
+          updated.players.map(x=>({...x,displayName:x.username+'（XP '+Number(x.xp||0)+' / CAT '+Number(x.catChuru||0)+' / 章 '+Number(x.unlockedChapterCount||0)+'/4）'})),
           'id','displayName',true
         );
         $('cat-admin-player').value=keep;
@@ -483,8 +483,7 @@
         ' / CATチュール +'+result.added.catChuru+
         ' / キャラクター '+result.added.characterIds.length+'体'+
         ' / 個別ステージ '+result.added.stageIds.length+'件'+
-        ' / 開放した章 '+(result.added.chapterIds||[]).length+'章'+
-        ' / 章に含まれるステージ '+(result.added.chapterStageIds||[]).length+'件'+
+        ' / 章選択で開放した章 '+(result.added.chapterIds||[]).map(id=>'第'+id+'章').join('・')+'（'+(result.added.chapterIds||[]).length+'章）'+
         ' / TERRACARD連携カード '+result.added.externalRewardIds.length+'件';
     }catch(e){
       toolsError.textContent='配布に失敗しました：'+e.message;
@@ -773,22 +772,34 @@
   async function applyScratchPlayerProfile(w){
     if(!auth||auth.role!=='player')return;
     const me=await api('/api/me');
-    let stage=null,ownedList=null,xpEntry=null,churuEntry=null;
+    let stage=null,ownedList=null,xpEntry=null,churuEntry=null,chapterList=null;
     for(let attempt=0;attempt<50;attempt++){
       stage=getScratchStage(w);
       ownedList=getScratchEntry(stage,'getto',true);
       xpEntry=getScratchEntry(stage,'経験値',false);
       churuEntry=getScratchEntry(stage,'catチュール',false);
-      if(stage&&ownedList&&xpEntry&&churuEntry)break;
+      chapterList=getScratchEntry(stage,'ステージ章',true);
+      // The Scratch green-flag script clears this list and inserts "1".
+      // Wait for that initialization to finish before merging operator grants.
+      const firstChapterReady=chapterList?.value?.some(value=>String(value)==='1');
+      if(stage&&ownedList&&xpEntry&&churuEntry&&chapterList&&firstChapterReady)break;
       await new Promise(resolve=>setTimeout(resolve,200));
     }
     if(!stage||!ownedList||!xpEntry||!churuEntry)
       throw new Error('Scratch本体の所持リスト・経験値・CATチュールを確認できませんでした。');
+    if(!chapterList||!chapterList.value.some(value=>String(value)==='1'))
+      throw new Error('Scratch本体の章選択リスト「ステージ章」を初期化できませんでした。');
     const codeById=new Map((me.legacyCharacterCodes||[]).filter(x=>x&&x.id&&x.legacyCode).map(x=>[String(x.id),String(x.legacyCode)]));
     const idByCode=new Map([...codeById].map(([id,code])=>[code,id]));
     const localCodes=uniqueStrings(ownedList.value);
     const localOwned=localCodes.map(code=>idByCode.get(code)).filter(Boolean);
     const profile=me.profile||{};
+    const unlockedChapterIds=uniqueStrings(['1',...(Array.isArray(profile.unlockedChapters)?profile.unlockedChapters:[])])
+      .filter(id=>['1','2','3','4'].includes(id));
+    for(const chapterId of unlockedChapterIds){
+      if(!chapterList.value.some(value=>String(value)===chapterId))
+        chapterList.value.push(chapterId);
+    }
     const owned=uniqueStrings([...(profile.owned||[]),...localOwned]).filter(id=>codeById.has(id));
     const mergedCodes=uniqueStrings([...localCodes,...owned.map(id=>codeById.get(id))]);
     const xp=Math.max(0,Math.floor(Math.max(Number(profile.xp)||0,Number(xpEntry.value)||0)));
