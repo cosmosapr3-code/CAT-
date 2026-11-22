@@ -8,6 +8,7 @@ on:
       - '_worker.js'
       - 'gameplay.js'
       - 'legacy-roster.json'
+      - 'tools/restore_legacy_characters.py'
       - 'CAT大戦争_完全版_1ファイル軽量版.html'
       - 'wrangler.jsonc'
       - '.assetsignore'
@@ -24,6 +25,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Rebuild roster using original gacha and enemy-book names
+        run: |
+          python -m pip install --disable-pip-version-check pillow cairosvg
+          python tools/restore_legacy_characters.py
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

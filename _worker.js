@@ -299,7 +299,12 @@ function defaultTerraStage() {
 }
 function resolveCharacterDisplayName(character) {
   if (!character || typeof character !== "object") return "";
+  const sideName = character.side === "ally" ? character.gachaName :
+    character.side === "enemy" ? character.encyclopediaName : "";
   const candidates = [
+    sideName,
+    character.gachaName,
+    character.encyclopediaName,
     character.displayName,
     character.originalName,
     character.nickname,
@@ -307,9 +312,8 @@ function resolveCharacterDisplayName(character) {
   ].map(value => String(value || "").trim()).filter(Boolean);
   const current = String(character.name || "").trim();
   const looksLikeInternalCode = value =>
-    /^(?:味方|敵)[a-z0-9_-]+$/i.test(value) ||
-    /^(?:ally|enemy)[-_]?[a-z0-9_-]+$/i.test(value) ||
-    /^(?:味方|敵)\\d+$/u.test(value);
+    /^(?:味方|敵)\s*[a-z0-9_-]+$/i.test(value) ||
+    /^(?:ally|enemy)[-_]?[a-z0-9_-]+$/i.test(value);
   if (looksLikeInternalCode(current)) {
     const meaningful = candidates.find(value => !looksLikeInternalCode(value));
     if (meaningful) return meaningful;
