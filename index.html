@@ -151,9 +151,9 @@
     </div>
     <div class="cat-tools-section" id="cat-terra-stage-editor">
       <h3>🏟️ TERRA CARDステージ設定</h3>
-      <p class="cat-tools-note">敵ごとに出現条件・時間・城HP条件・出現確率・出現数・間隔を設定できます。体力／攻撃倍率は敵個別倍率×ステージ共通倍率で計算します。</p>
+      <p class="cat-tools-note">敵ごとに出現条件・時間・城HP条件・出現確率・出現数・間隔を設定できます。体力／攻撃倍率は敵個別倍率×ステージ共通倍率で計算します。時間は最大1年、間隔は最大1日、出現数は最大1万体、個別倍率は最大10000倍です。確率・城HPは%なので最大100です。</p>
       <label class="cat-tools-field">敵キャラクター・1種類ごとの出現数／個別倍率<div id="cat-terra-enemies" class="cat-multi"></div></label>
-      <label class="cat-tools-field">ステージ共通倍率（個別の体力・攻撃倍率に乗算／0.1〜100）<input id="cat-terra-multiplier" type="number" min="0.1" max="100" step="0.1" value="1"></label>
+      <label class="cat-tools-field">ステージ共通倍率（個別の体力・攻撃倍率に乗算／0.01〜1000）<input id="cat-terra-multiplier" type="number" min="0.01" max="1000" step="0.01" value="1"></label>
       <button id="cat-terra-save" class="cat-tools-action" type="button">TERRA CARDステージを保存</button>
       <p id="cat-terra-status" class="cat-tools-note">現在の設定を読み込み中…</p>
     </div>
@@ -223,14 +223,14 @@
       return '<article class="cat-terra-enemy-row" data-terra-enemy-row><label class="cat-terra-enemy-name"><input type="checkbox" data-terra-enemy value="'+esc(enemy.id)+'" '+(byId.has(String(enemy.id))?'checked':'')+'><span>'+esc(enemy.name)+'</span></label>'+
         '<div class="cat-terra-fields"><div class="cat-terra-section-title">出現条件・頻度</div>'+
         '<label class="cat-terra-field">出現条件<select data-terra-trigger><option value="time" '+(trigger==='time'?'selected':'')+'>時間経過</option><option value="enemy_base" '+(trigger==='enemy_base'?'selected':'')+'>敵城HP連動</option><option value="player_base" '+(trigger==='player_base'?'selected':'')+'>自城HP連動</option></select></label>'+
-        '<label class="cat-terra-field" data-terra-at-field '+(trigger!=='time'?'hidden':'')+'>出現開始時間（秒）<input data-terra-at type="number" min="0" max="86400" step="1" value="'+number(wave.at,4+index*12,0,86400)+'"></label>'+
-        '<label class="cat-terra-field" data-terra-castle-field '+(trigger==='time'?'hidden':'')+'>城HPがこの割合以下（%）<input data-terra-castle type="number" min="1" max="100" step="1" value="'+number(wave.castleHpPercent,50,1,100)+'"></label>'+
-        '<label class="cat-terra-field">出現数（体）<input data-terra-count type="number" min="1" max="1000" step="1" value="'+number(wave.count,1,1,1000)+'"></label>'+
-        '<label class="cat-terra-field">再出現間隔（秒）<input data-terra-interval type="number" min="1" max="3600" step="1" value="'+number(wave.interval,18,1,3600)+'"></label>'+
-        '<label class="cat-terra-field">出現確率（%）<input data-terra-chance type="number" min="1" max="100" step="1" value="'+number(wave.spawnChance,100,1,100)+'"></label>'+
+        '<label class="cat-terra-field" data-terra-at-field '+(trigger!=='time'?'hidden':'')+'>出現開始時間（秒）<input data-terra-at type="number" min="0" max="31536000" step="1" value="'+number(wave.at,4+index*12,0,31536000)+'"></label>'+
+        '<label class="cat-terra-field" data-terra-castle-field '+(trigger==='time'?'hidden':'')+'>城HPがこの割合以下（%）<input data-terra-castle type="number" min="0" max="100" step="1" value="'+number(wave.castleHpPercent,50,0,100)+'"></label>'+
+        '<label class="cat-terra-field">出現数（体）<input data-terra-count type="number" min="1" max="10000" step="1" value="'+number(wave.count,1,1,10000)+'"></label>'+
+        '<label class="cat-terra-field">再出現間隔（秒）<input data-terra-interval type="number" min="1" max="86400" step="1" value="'+number(wave.interval,18,1,86400)+'"></label>'+
+        '<label class="cat-terra-field">出現確率（%）<input data-terra-chance type="number" min="0.1" max="100" step="0.1" value="'+number(wave.spawnChance,100,0.1,100)+'"></label>'+
         '<div class="cat-terra-section-title">敵の強さ（個別倍率）</div>'+
-        '<label class="cat-terra-field">体力倍率（×）<input data-terra-hp type="number" min="0.1" max="1000" step="0.1" value="'+number(wave.hpMultiplier,1,0.1,1000)+'"></label>'+
-        '<label class="cat-terra-field">攻撃倍率（×）<input data-terra-attack type="number" min="0.1" max="1000" step="0.1" value="'+number(wave.attackMultiplier,1,0.1,1000)+'"></label></div>'+
+        '<label class="cat-terra-field">体力倍率（×）<input data-terra-hp type="number" min="0.01" max="10000" step="0.01" value="'+number(wave.hpMultiplier,1,0.01,10000)+'"></label>'+
+        '<label class="cat-terra-field">攻撃倍率（×）<input data-terra-attack type="number" min="0.01" max="10000" step="0.01" value="'+number(wave.attackMultiplier,1,0.01,10000)+'"></label></div>'+
         '<div class="cat-terra-flags"><label class="cat-terra-flag"><input type="checkbox" data-terra-boss '+(boss?'checked':'')+'>ボスとして出現</label><label class="cat-terra-flag"><input type="checkbox" data-terra-shockwave '+(shockwave?'checked':'')+' '+(!boss?'disabled':'')+'>登場時に衝撃波</label></div></article>';
     }).join('');
     root.innerHTML='<div class="cat-multi-toolbar"><input type="search" data-terra-search placeholder="敵の名前で検索"><button type="button" data-terra-all>表示中を全選択</button><button type="button" data-terra-clear>全解除</button><span class="cat-multi-count" data-terra-count></span></div><div class="cat-multi-options">'+(rows||'<span class="cat-tools-note">敵キャラクターがありません。</span>')+'</div>';
@@ -256,19 +256,29 @@
     update();
   }
   function selectedTerraWaves(){
-    return [...$('cat-terra-enemies').querySelectorAll('[data-terra-enemy-row]')].filter(row=>row.querySelector('[data-terra-enemy]').checked).map(row=>({
-      characterId:row.querySelector('[data-terra-enemy]').value,
-      trigger:row.querySelector('[data-terra-trigger]').value,
-      at:Number(row.querySelector('[data-terra-at]').value),
-      castleHpPercent:Number(row.querySelector('[data-terra-castle]').value),
-      count:Number(row.querySelector('[data-terra-count]').value),
-      interval:Number(row.querySelector('[data-terra-interval]').value),
-      spawnChance:Number(row.querySelector('[data-terra-chance]').value),
-      hpMultiplier:Number(row.querySelector('[data-terra-hp]').value),
-      attackMultiplier:Number(row.querySelector('[data-terra-attack]').value),
-      boss:row.querySelector('[data-terra-boss]').checked,
-      shockwave:row.querySelector('[data-terra-shockwave]').checked
-    }));
+    return [...$('cat-terra-enemies').querySelectorAll('[data-terra-enemy-row]')]
+      .filter(row=>row.querySelector('[data-terra-enemy]').checked)
+      .map(row=>{
+        const trigger=row.querySelector('[data-terra-trigger]').value;
+        const read=selector=>{
+          const raw=row.querySelector(selector)?.value??'';
+          return String(raw).trim()===''?NaN:Number(raw);
+        };
+        return {
+          characterId:row.querySelector('[data-terra-enemy]').value,
+          trigger,
+          // 使わない方の条件欄は検証対象にせず、安全な既定値を送る。
+          at:trigger==='time'?read('[data-terra-at]'):0,
+          castleHpPercent:trigger==='time'?50:read('[data-terra-castle]'),
+          count:read('[data-terra-count]'),
+          interval:read('[data-terra-interval]'),
+          spawnChance:read('[data-terra-chance]'),
+          hpMultiplier:read('[data-terra-hp]'),
+          attackMultiplier:read('[data-terra-attack]'),
+          boss:row.querySelector('[data-terra-boss]').checked,
+          shockwave:row.querySelector('[data-terra-shockwave]').checked
+        };
+      });
   }
   async function reportStageWin(stageId,legacyCode,stageName){if(!auth||auth.role!=='player'||(!stageId&&!legacyCode&&!stageName))return null;const result=await api('/api/missions/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stageId,legacyCode,stageName})});if(result.completed?.length){toolsError.textContent='ミッション達成！報酬を受け取りました。';if(!toolsPanel.hidden)await loadPlayerMissions();}return result;}
   window.CAT_REPORT_STAGE_WIN=reportStageWin;
@@ -353,8 +363,21 @@
       const enemyWaves=selectedTerraWaves();
       const multiplier=Number($('cat-terra-multiplier').value||1);
       if(!enemyWaves.length)throw new Error('敵キャラクターを1体以上選んでください。');
-      if(enemyWaves.some(w=>!Number.isInteger(w.count)||w.count<1||w.count>1000||!Number.isInteger(w.at)||w.at<0||w.at>86400||!Number.isInteger(w.interval)||w.interval<1||w.interval>3600||!Number.isFinite(w.spawnChance)||w.spawnChance<1||w.spawnChance>100||!Number.isFinite(w.castleHpPercent)||w.castleHpPercent<1||w.castleHpPercent>100||!['time','enemy_base','player_base'].includes(w.trigger)||!Number.isFinite(w.hpMultiplier)||w.hpMultiplier<0.1||w.hpMultiplier>1000||!Number.isFinite(w.attackMultiplier)||w.attackMultiplier<0.1||w.attackMultiplier>1000))throw new Error('時間は0〜86400秒、間隔は1〜3600秒、確率は1〜100%、城HP条件は1〜100%、出現数は1〜1000体、個別倍率は0.1〜1000で指定してください。');
-      if(!Number.isFinite(multiplier)||multiplier<0.1||multiplier>100)throw new Error('ステージ倍率は0.1〜100で指定してください。');
+      const invalidWave=enemyWaves.map((w,index)=>{
+        const enemy=(adminCatalog.enemies||[]).find(x=>x.id===w.characterId);
+        const label=enemy?.name||w.characterId||('敵'+(index+1));
+        if(!['time','enemy_base','player_base'].includes(w.trigger))return label+'：出現条件を選び直してください。';
+        if(!Number.isInteger(w.count)||w.count<1||w.count>10000)return label+'：出現数は1〜10000の整数で指定してください（現在値：'+w.count+'）。';
+        if(!Number.isInteger(w.interval)||w.interval<1||w.interval>86400)return label+'：再出現間隔は1〜86400秒の整数で指定してください（現在値：'+w.interval+'）。';
+        if(w.trigger==='time'&&(!Number.isInteger(w.at)||w.at<0||w.at>31536000))return label+'：出現開始時間は0〜31536000秒の整数で指定してください（現在値：'+w.at+'）。';
+        if(w.trigger!=='time'&&(!Number.isFinite(w.castleHpPercent)||w.castleHpPercent<0||w.castleHpPercent>100))return label+'：城HP条件は0〜100%で指定してください（現在値：'+w.castleHpPercent+'）。';
+        if(!Number.isFinite(w.spawnChance)||w.spawnChance<0.1||w.spawnChance>100)return label+'：出現確率は0.1〜100%で指定してください（現在値：'+w.spawnChance+'）。';
+        if(!Number.isFinite(w.hpMultiplier)||w.hpMultiplier<0.01||w.hpMultiplier>10000)return label+'：体力倍率は0.01〜10000で指定してください（現在値：'+w.hpMultiplier+'）。';
+        if(!Number.isFinite(w.attackMultiplier)||w.attackMultiplier<0.01||w.attackMultiplier>10000)return label+'：攻撃倍率は0.01〜10000で指定してください（現在値：'+w.attackMultiplier+'）。';
+        return null;
+      }).find(Boolean);
+      if(invalidWave)throw new Error(invalidWave);
+      if(!Number.isFinite(multiplier)||multiplier<0.01||multiplier>1000)throw new Error('ステージ共通倍率は0.01〜1000で指定してください（現在値：'+multiplier+'）。');
       button.disabled=true;button.textContent='保存中…';
       const result=await api('/api/admin/terra-stage',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enemyWaves,multiplier})});
       const total=result.stage.enemyWaves.reduce((sum,w)=>sum+Number(w.count||1),0);
