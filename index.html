@@ -829,6 +829,15 @@
       const localCodes=uniqueStrings(ownedList.value);
       const localOwned=localCodes.map(code=>idByCode.get(code)).filter(Boolean);
       const remoteProfile=me.profile||{};
+      // Keep the actual Scratch chapter picker synchronized even if an operator
+      // grants a chapter while this player is already inside the game.
+      const chapterList=getScratchEntry(stage,'ステージ章',true);
+      if(chapterList){
+        for(const chapterId of uniqueStrings(remoteProfile.unlockedChapters||[]).filter(id=>['1','2','3','4'].includes(id))){
+          if(!chapterList.value.some(value=>String(value)===chapterId))
+            chapterList.value.push(chapterId);
+        }
+      }
       const last=(()=>{try{return JSON.parse(w.__CAT_PROFILE_LAST||'{}');}catch{return {};}})();
       const remoteChanged=Number(me.updatedAt||0)!==Number(w.__CAT_PROFILE_UPDATED_AT||0)||
         (last.xp!==undefined&&Number(remoteProfile.xp||0)!==Number(last.xp))||
