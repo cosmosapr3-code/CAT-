@@ -950,8 +950,6 @@
       ownedList.value=mergedCodes;
       xpEntry.value=xp;
       churuEntry.value=catChuru;
-      const snapshot=JSON.stringify({xp,catChuru,owned,levels:nextLevels});
-      if(snapshot===w.__CAT_PROFILE_LAST&&Number(me.updatedAt||0)===Number(w.__CAT_PROFILE_UPDATED_AT||0))return;
       const levelList=getScratchEntry(stage,'CAT軍団のレベルセーブ用',true);
       const allyOrder=getScratchEntry(stage,'味方',true);
       const nextLevels={...(remoteProfile.levels||{})};
@@ -963,6 +961,8 @@
           nextLevels[id]=Math.max(localLevel,Number(nextLevels[id]||1));
         }
       }
+      const snapshot=JSON.stringify({xp,catChuru,owned,levels:nextLevels});
+      if(snapshot===w.__CAT_PROFILE_LAST&&Number(me.updatedAt||0)===Number(w.__CAT_PROFILE_UPDATED_AT||0))return;
       const nextProfile={...remoteProfile,xp,catChuru,owned,levels:nextLevels};
       const saved=await api('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:nextProfile,expectedProfile:me.profile,expectedProfileExists:me.profileExists!==false})});
       w.__CAT_PROFILE_UPDATED_AT=Number(saved.updatedAt||me.updatedAt||0);
