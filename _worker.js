@@ -744,7 +744,6 @@ async function handleApi(request, env) {
     const deliveries = await getTerraRewardDeliveryStatus(db, catUser.id, request);
     const fixedMissionDone = data.profile.completedMissions.includes(FIXED_TERRA_MISSION.id);
     const fixedRewardDelivery = deliveries.find(item =>
-      item.missionId === FIXED_TERRA_MISSION.id &&
       item.rewardId === "external-reward-cat-kanzen"
     );
     return json({
