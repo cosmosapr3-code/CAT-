@@ -253,6 +253,12 @@ def main():
     # The original gacha result cards contain the official ally display names
     # inside the SVG artwork. Their costume names are the same Scratch IDs that
     # appear in the Stage "味方" list, so this is a direct, non-guessed mapping.
+    matching_targets = {
+        name: [costume.get("name", "") for costume in target.get("costumes", [])]
+        for name, target in targets.items()
+        if "中身" in name or "ガチャ" in name or "中" in name
+    }
+    print("Gacha-related Scratch targets: " + json.dumps(matching_targets, ensure_ascii=False))
     gacha_target = targets.get("中身", {})
     ally_names = {
         str(costume.get("name", "")): svg_gacha_card_name(
