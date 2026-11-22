@@ -339,6 +339,33 @@ summary["focused_stat_lists"] = {
 summary["focused_name_blocks"] = []
 # Capture complete Scratch scripts that reference unit stats, prices, and UI-name values.
 summary["focused_stat_scripts"] = []
+summary["focused_panel_procedures"] = []
+summary["focused_gacha_name_strings"] = []
+for target in targets:
+    if target.get("name", "") not in {"パネル", "ガチャ", "中身", "図鑑", "編成表", "シールド コンボ"}:
+        continue
+    blocks = target.get("blocks", {})
+    if target.get("name", "") == "パネル":
+        for block_id, block in blocks.items():
+            if isinstance(block, dict) and block.get("opcode") in {"procedures_prototype", "procedures_definition", "procedures_call"}:
+                summary["focused_panel_procedures"].append({
+                    "target": target.get("name", ""), "id": block_id,
+                    "opcode": block.get("opcode", ""), "mutation": block.get("mutation", {}),
+                    "fields": block.get("fields", {}), "inputs": block.get("inputs", {}),
+                    "next": block.get("next"), "parent": block.get("parent")
+                })
+    # Gather string literals from gacha/encyclopedia blocks which look like unit labels.
+    if target.get("name", "") in {"ガチャ", "中身", "図鑑", "編成表"}:
+        for block_id, block in blocks.items():
+            if not isinstance(block, dict):
+                continue
+            strings = collect_literals(block.get("inputs", {})) + collect_literals(block.get("fields", {}))
+            for value in strings:
+                if isinstance(value, str) and len(value) > 1 and any("\u3040" <= ch <= "\u30ff" or "\u4e00" <= ch <= "\u9fff" for ch in value):
+                    summary["focused_gacha_name_strings"].append({
+                        "target": target.get("name", ""), "id": block_id,
+                        "opcode": block.get("opcode", ""), "value": value
+                    })
 stat_list_terms = {
     "hp減少", "hpp制御システム", "idousokudo", "攻撃間隔",
     "syatei mikata", "△味方KB", "敵　金", "hpgs", "teki",
