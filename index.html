@@ -40,6 +40,8 @@
 .cat-tools-field select[multiple]{min-height:110px}
 .cat-tools-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
 .cat-tools-note{font-size:12px;color:#c9bda8;line-height:1.5}
+#cat-character-stats-editor .cat-tools-row{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+#cat-character-stats-editor .cat-tools-field input{font-variant-numeric:tabular-nums}
 .cat-tools-card{display:grid;grid-template-columns:86px 1fr;gap:12px;align-items:center;border:1px solid #725c3b;border-radius:10px;padding:10px;margin:8px 0;background:#29241b}
 .cat-tools-card img{width:86px;height:112px;object-fit:contain;background:#eee;border-radius:6px}
 .cat-tools-mission{padding:11px;margin:8px 0;border-radius:10px;background:#292929;border:1px solid #555}
@@ -94,6 +96,28 @@
     <div class="cat-tools-row"><label class="cat-tools-field">配布キャラクター<select id="cat-grant-characters" multiple></select></label><label class="cat-tools-field">開放する既存ステージ<select id="cat-grant-stages" multiple></select></label><label class="cat-tools-field">別ゲーム用報酬<select id="cat-grant-external-rewards" multiple></select></label></div>
     <button id="cat-grant-submit" class="cat-tools-action" type="button">この内容を配布</button>
     <p class="cat-tools-note">数値は現在の所持量に加算。キャラクター・カード・ステージ開放は未所持分だけ追加します。</p>
+    <div class="cat-tools-section" id="cat-character-stats-editor">
+      <h3>⚙️ 全キャラクターの能力値を編集</h3>
+      <p class="cat-tools-note">味方・敵の体力、攻撃力、移動速度、攻撃間隔、射程、KBを個別に変更できます。味方だけ生産価格・再生産時間も変更できます。保存内容はD1に記録します。</p>
+      <label class="cat-tools-field">対象キャラクター<select id="cat-stat-character"></select></label>
+      <div class="cat-tools-row">
+        <label class="cat-tools-field">体力<input id="cat-stat-hp" type="number" min="1" step="1"></label>
+        <label class="cat-tools-field">攻撃力<input id="cat-stat-attack" type="number" min="0" step="1"></label>
+        <label class="cat-tools-field">移動速度<input id="cat-stat-speed" type="number" min="0.01" step="0.1"></label>
+        <label class="cat-tools-field">攻撃間隔（小さいほど速い）<input id="cat-stat-cooldown" type="number" min="0.01" step="0.1"></label>
+        <label class="cat-tools-field">射程<input id="cat-stat-range" type="number" min="0" step="1"></label>
+        <label class="cat-tools-field">KB回数<input id="cat-stat-kb" type="number" min="0" step="1"></label>
+      </div>
+      <div id="cat-stat-ally-fields" class="cat-tools-row">
+        <label class="cat-tools-field">生産価格<input id="cat-stat-cost" type="number" min="0" step="1"></label>
+        <label class="cat-tools-field">再生産時間<input id="cat-stat-reproduction" type="number" min="0" step="0.1"></label>
+      </div>
+      <div id="cat-stat-enemy-fields" class="cat-tools-row" hidden>
+        <label class="cat-tools-field">撃破報酬<input id="cat-stat-reward" type="number" min="0" step="1"></label>
+      </div>
+      <button id="cat-stat-save" class="cat-tools-action" type="button">このキャラクターの能力値を保存</button>
+      <p id="cat-stat-status" class="cat-tools-note" aria-live="polite">キャラクターを選択してください。</p>
+    </div>
     <div class="cat-tools-section" id="cat-name-editor">
       <h3>🏷️ キャラクターの正式名称を登録</h3>
       <p class="cat-tools-note">元のScratchデータには正式名ではなく内部コードだけのキャラクターがあります。正しい表示名を入力して保存すると、運営の配布一覧・敵キャラクター選択欄に反映されます。</p>
@@ -163,6 +187,21 @@
       displayName:(x.side==='enemy'?'敵':'味方')+'：'+x.name+' ['+(x.legacyCode||x.id)+']'
     }));
     $('cat-name-character').innerHTML=optionsHtml(allCharacters,'id','displayName');
+    $('cat-stat-character').innerHTML=optionsHtml(allCharacters,'id','displayName');
+    const fillCharacterStatEditor=()=>{
+      const selected=allCharacters.find(x=>x.id===$('cat-stat-character').value);
+      if(!selected)return;
+      for(const [field,value] of Object.entries({
+        hp:selected.hp,attack:selected.attack,speed:selected.speed,cooldown:selected.cooldown,
+        range:selected.range,kb:selected.kb,cost:selected.cost,reproduction:selected.reproduction,reward:selected.reward
+      })) $('cat-stat-'+field).value=String(value??0);
+      const ally=selected.side==='ally';
+      $('cat-stat-ally-fields').hidden=!ally;
+      $('cat-stat-enemy-fields').hidden=ally;
+      $('cat-stat-status').textContent=(selected.side==='ally'?'味方':'敵')+'：'+selected.name+' の設定を読み込みました。';
+    };
+    $('cat-stat-character').onchange=fillCharacterStatEditor;
+    if(allCharacters.length){$('cat-stat-character').value=allCharacters[0].id;fillCharacterStatEditor();}
     $('cat-name-character').onchange=()=>{
       const selected=allCharacters.find(x=>x.id===$('cat-name-character').value);
       $('cat-character-name').value=selected?.name||'';
@@ -204,6 +243,26 @@
       $('cat-terra-status').textContent='保存しました：敵 '+result.selectedEnemyIds.length+'体 / 倍率 ×'+result.stage.multiplier+'。ステージ一覧に「TERRA CARD」が追加されます。';
       await loadAdminPanel();
     }catch(e){$('cat-terra-status').textContent='保存に失敗しました：'+e.message;}
+  });
+
+  $('cat-stat-save').addEventListener('click',async()=>{
+    const button=$('cat-stat-save');
+    try{
+      const selected=(adminCatalog.allCharacters||[]).find(x=>x.id===$('cat-stat-character').value);
+      if(!selected)throw new Error('キャラクターを選択してください。');
+      const read=(field)=>{const raw=$('cat-stat-'+field).value;if(raw.trim()==='')throw new Error(field+' を入力してください。');const value=Number(raw);if(!Number.isFinite(value))throw new Error(field+' の値が正しくありません。');return value;};
+      const update={id:selected.id,hp:read('hp'),attack:read('attack'),speed:read('speed'),cooldown:read('cooldown'),range:read('range'),kb:read('kb')};
+      if(selected.side==='ally'){update.cost=read('cost');update.reproduction=read('reproduction');}
+      else update.reward=read('reward');
+      button.disabled=true;button.textContent='保存中…';$('cat-stat-status').textContent='保存中…';
+      const result=await api('/api/admin/character-stats',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({updates:[update]})});
+      await loadAdminPanel();
+      $('cat-stat-character').value=selected.id;
+      $('cat-stat-character').dispatchEvent(new Event('change'));
+      $('cat-stat-status').textContent='保存しました。次回のゲーム読み込みから反映されます。';
+      toolsError.textContent='能力値を保存しました：'+selected.name;
+    }catch(e){$('cat-stat-status').textContent='保存に失敗しました：'+e.message;}
+    finally{button.disabled=false;button.textContent='このキャラクターの能力値を保存';}
   });
 
   $('cat-name-save').addEventListener('click',async()=>{
