@@ -374,6 +374,16 @@ async function loadConfig(env, request) {
       }
     } catch(error) { console.error("Character name overrides could not be read:",error); }
   }
+  // 生産価格の基準値はScratchのガチャ／出陣ボタンに記録された価格。
+  // 旧版の仮計算価格がmain設定に残っていても、正式な価格を先に戻す。
+  if (legacyCharacters) {
+    const sourceCosts = new Map(legacyCharacters.filter(x => x.side === "ally").map(x => [x.id, Number(x.cost || 0)]));
+    config.characters = (config.characters || []).map(character =>
+      character.side === "ally" && sourceCosts.has(character.id)
+        ? { ...character, cost: sourceCosts.get(character.id) }
+        : character
+    );
+  }
   // 運営が保存したキャラクター能力値を元データに重ねる。
   const statsRow=await db.prepare("SELECT value_json FROM game_config WHERE config_key = 'character_stats'").first();
   if(statsRow?.value_json) {
