@@ -12,6 +12,8 @@ on:
       - 'wrangler.jsonc'
       - '.assetsignore'
       - 'assets/**'
+      - 'scripts/assemble-cat-kanzen-image.mjs'
+      - 'scripts/cat-kanzen-image-parts/**'
       - '.github/workflows/deploy-cloudflare.yml'
   workflow_dispatch:
 
@@ -39,6 +41,9 @@ jobs:
             echo "Cloudflare deployment blocked: CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID must be set in GitHub Actions Secrets or Variables."
             exit 1
           fi
+
+      - name: Assemble high-resolution CAT完全体 artwork
+        run: node scripts/assemble-cat-kanzen-image.mjs
 
       - name: Deploy Worker, D1 binding and static game assets
         env:
