@@ -31,6 +31,7 @@
 #cat-speedup-use,#cat-missions-refresh{border:1px solid #9d762e;border-radius:9px;padding:8px 11px;background:#694917;color:#fff4d1;font-weight:800;cursor:pointer}
 #cat-speedup-use:disabled,#cat-missions-refresh:disabled{opacity:.55;cursor:wait}
 #cat-user-homebar{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;padding:7px}
+#cat-user-homebar[hidden],#cat-player-wallet[hidden],#cat-speedup-use[hidden]{display:none!important}
 .cat-grant-small-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
 #cat-tools-launcher{position:fixed;right:14px;bottom:14px;z-index:2147482000;border:2px solid #e8c06d;border-radius:999px;padding:12px 17px;background:linear-gradient(#f7dc9f,#bf8730);color:#271a08;font-weight:900;box-shadow:0 5px 18px #0009;cursor:pointer}
 #cat-tools-launcher[hidden],#cat-tools-panel[hidden]{display:none!important}
@@ -190,6 +191,7 @@
   const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll(String.fromCharCode(34),'&quot;').replaceAll(String.fromCharCode(39),'&#39;');
   let adminMissions=[],adminCatalog={characters:[],stages:[]},cardCatalog=[];
   let pendingAdminGrant=null;
+  try{pendingAdminGrant=JSON.parse(sessionStorage.getItem('cat-pending-admin-grant')||'null');}catch{pendingAdminGrant=null;}
   let pendingSpeedUpRequestId=null;
   let speedUpTimer=null;
   let speedUpOriginalFramerate=30;
@@ -470,7 +472,10 @@
       if(!(xp>0||catChuru>0||rainbowStars>0||hasItems||characterIds.length||stageIds.length||chapterIds.length||externalRewardIds.length))
         throw new Error('配布する経験値・CATチュール・虹星・アイテム・キャラクター・報酬・ステージ・章を1つ以上指定してください。');
       const signature=JSON.stringify({playerId,xp,catChuru,rainbowStars,items,characterIds,stageIds,chapterIds,externalRewardIds});
-      if(!pendingAdminGrant||pendingAdminGrant.signature!==signature)pendingAdminGrant={signature,requestId:createRequestId()};
+      if(!pendingAdminGrant||pendingAdminGrant.signature!==signature){
+        pendingAdminGrant={signature,requestId:createRequestId()};
+        try{sessionStorage.setItem('cat-pending-admin-grant',JSON.stringify(pendingAdminGrant));}catch{}
+      }
       button.disabled=true;
       button.textContent='配布中…';
       const result=await api('/api/admin/grants',{
@@ -488,6 +493,7 @@
         $('cat-admin-player').value=keep;
       }
       pendingAdminGrant=null;
+      try{sessionStorage.removeItem('cat-pending-admin-grant');}catch{}
       $('cat-grant-xp').value='0';
       $('cat-grant-churu').value='0';
       $('cat-grant-rainbow-stars').value='0';
