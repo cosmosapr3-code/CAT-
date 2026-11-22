@@ -605,4 +605,113 @@ for target in targets:
                 "parent": block.get("parent")
             })
 
+# Additional diagnostics for requested CAT gameplay repairs.
+bug_terms = re.compile(
+    r"レベル|level|経験値|必須経験値|上げ|進化|コンボ|combo|襖|ふすま|障子|"
+    r"セーブ|ロード|save|load|方向|回転|np|生産|出撃|味方攻撃|移動|攻撃|"
+    r"cost|必要|上限|図鑑|敵キャラ|ステージクリア",
+    re.I
+)
+target_focus = re.compile(
+    r"Stage|ステージ|レベル|パネル|編成|mikata|図鑑|セーブ|ロード|コンボ|"
+    r"襖|ふすま|障子|ドア|とびら|味方攻撃|^np$|^p$|^z$|Pico",
+    re.I
+)
+summary["bug_target_scripts"] = []
+summary["bug_costume_checks"] = []
+for target in targets:
+    target_name = str(target.get("name", ""))
+    blocks = target.get("blocks", {})
+    if target_focus.search(target_name):
+        costume_checks = []
+        for costume in target.get("costumes", []):
+            asset_name = str(costume.get("md5ext") or (
+                costume.get("assetId", "") + "." + costume.get("dataFormat", "")
+            ))
+            costume_checks.append({
+                "name": str(costume.get("name", "")),
+                "format": costume.get("dataFormat", ""),
+                "md5ext": asset_name,
+                "assetExists": bool(asset_name and asset_name in archive.namelist()),
+                "bitmapResolution": costume.get("bitmapResolution", 1),
+                "rotationCenterX": costume.get("rotationCenterX"),
+                "rotationCenterY": costume.get("rotationCenterY")
+            })
+        summary["bug_costume_checks"].append({
+            "target": target_name,
+            "costumeCount": len(costume_checks),
+            "missingAssets": [item for item in costume_checks if not item["assetExists"]],
+            "costumes": costume_checks
+        })
+    roots = []
+    for root_id, root in blocks.items():
+        if not isinstance(root, dict) or not root.get("topLevel"):
+            continue
+        nodes = block_tree(blocks, root_id)
+        if not nodes:
+            continue
+        literals = []
+        for _, node in nodes:
+            literals.extend(collect_literals(node.get("fields", {})))
+            literals.extend(collect_literals(node.get("inputs", {})))
+            literals.append(str(node.get("opcode", "")))
+            mutation = node.get("mutation") or {}
+            literals.extend(str(value) for value in mutation.values())
+        matched = [value for value in literals if isinstance(value, str) and bug_terms.search(value)]
+        if not matched:
+            continue
+        roots.append({
+            "root": root_id,
+            "rootOpcode": root.get("opcode", ""),
+            "rootFields": root.get("fields", {}),
+            "matchedTerms": list(dict.fromkeys(matched))[:50],
+            "blocks": [{
+                "id": bid,
+                "opcode": node.get("opcode", ""),
+                "mutation": node.get("mutation", {}),
+                "fields": node.get("fields", {}),
+                "inputs": node.get("inputs", {}),
+                "next": node.get("next"),
+                "parent": node.get("parent")
+            } for bid, node in nodes]
+        })
+    if roots and target_focus.search(target_name):
+        summary["bug_target_scripts"].append({
+            "target": target_name,
+            "scriptCount": len(roots),
+            "scripts": roots[:35]
+        })
+summary["target_names_all"] = [str(target.get("name", "")) for target in targets]
+summary["bug_list_data"] = []
+for target in targets:
+    target_name = str(target.get("name", ""))
+    for item in target.get("lists", {}).values():
+        label, values = item[0], item[1]
+        if re.search(
+            r"レベル|経験値|味方|敵|図鑑|セーブ|ロード|コンボ|cost|コスト|"
+            r"襖|障子|ふすま|必須|出撃|攻撃|方向",
+            str(label), re.I
+        ):
+            summary["bug_list_data"].append({
+                "target": target_name,
+                "list": str(label),
+                "count": len(values),
+                "sample": values[:160]
+            })
+summary["bug_variables"] = []
+for target in targets:
+    target_name = str(target.get("name", ""))
+    for item in target.get("variables", {}).values():
+        label, value = item[0], item[1]
+        if re.search(
+            r"レベル|経験値|味方|敵|図鑑|セーブ|ロード|コンボ|cost|コスト|"
+            r"襖|障子|ふすま|必須|出撃|攻撃|方向",
+            str(label), re.I
+        ):
+            summary["bug_variables"].append({
+                "target": target_name,
+                "variable": str(label),
+                "value": value
+            })
+
 print(json.dumps(summary, ensure_ascii=False, separators=(",", ":")))
