@@ -434,7 +434,9 @@
     return id&&blocks[id]?blocks[id]:null;
   }
   function scratchLocalVariable(target,name){
-    return Object.values(target?.variables||{}).find(v=>v&&v.name===name&&v.isLocal===true)||null;
+    // Scratch VM keeps sprite-local variables on each sprite target; they do not
+    // carry an isLocal flag in the runtime representation.
+    return Object.values(target?.variables||{}).find(v=>v&&v.name===name)||null;
   }
   function scratchCharacterCode(target,codeMap){
     const vars=Object.values(target?.variables||{});
