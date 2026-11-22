@@ -312,7 +312,25 @@ for index, code in enumerate(enemy_codes):
     enemy_items.append((code, source, code))
 write_contact_sheet(enemy_items, "enemy-contact-sheet.png")
 
-summary["contact_sheets"] = ["ally-contact-sheet.png", "enemy-contact-sheet.png"]
+# Actual presentation sprites used by the ally gacha and enemy encyclopedia.
+gacha_items = []
+for sprite_name in ("中身", "編成表"):
+    sprite = next((t for t in targets if t.get("name") == sprite_name), None)
+    if sprite:
+        for costume in sprite.get("costumes", []):
+            gacha_items.append((f"{sprite_name}/{costume.get('name','')}", sprite_name, costume.get("name", "")))
+book = next((t for t in targets if t.get("name") == "図鑑"), None)
+book_items = []
+if book:
+    for costume in book.get("costumes", []):
+        book_items.append((f"図鑑/{costume.get('name','')}", "図鑑", costume.get("name", "")))
+write_contact_sheet(gacha_items, "gacha-ui-contact-sheet.png", columns=4)
+write_contact_sheet(book_items, "enemy-book-contact-sheet.png", columns=6)
+
+summary["contact_sheets"] = [
+    "ally-contact-sheet.png", "enemy-contact-sheet.png",
+    "gacha-ui-contact-sheet.png", "enemy-book-contact-sheet.png"
+]
 
 # Read text labels embedded in the original SVG costumes. These are the
 # actual gacha/enemy-book assets; converting them to raster first can lose
@@ -321,7 +339,7 @@ import html as html_lib
 summary["costume_svg_text"] = []
 for target in targets:
     target_name = target.get("name", "")
-    if target_name not in {"編成表", "mikata", "mikata2", "図鑑", "z", "Pico", "味方?teki?キャラ"}:
+    if target_name not in {"編成表", "中身", "ガチャ", "図鑑", "mikata", "mikata2", "z", "Pico", "味方?teki?キャラ"}:
         continue
     for costume in target.get("costumes", []):
         if costume.get("dataFormat") != "svg":
