@@ -22,7 +22,7 @@ jobs:
       - name: Install image tools
         run: python -m pip install --upgrade pillow cairosvg
       - name: Inspect Scratch variables, character names and victory blocks
-        run: python tools/inspect_cat_scratch.py | tee scratch-inspection.json
+        run: set -o pipefail && python tools/inspect_cat_scratch.py | tee scratch-inspection.json
       - name: Upload inspection summary and character contact sheets
         uses: actions/upload-artifact@v4
         with:
