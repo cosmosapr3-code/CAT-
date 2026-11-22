@@ -170,6 +170,30 @@ for target in targets:
 summary["japanese_text_literals"] = sorted(japanese_literals)
 summary["say_and_think_blocks"] = say_blocks[:1000]
 
+# Find any real display-name tables, not only the two known ID-code lists.
+summary["named_lists"] = []
+for target in targets:
+    for item in target.get("lists", {}).values():
+        label, values = item[0], item[1]
+        text_values = [str(value) for value in values if isinstance(value, str)]
+        human_readable = [
+            value for value in text_values
+            if len(value.strip()) > 2 and re.search(r"[ぁ-んァ-ヶ一-龠]", value)
+        ]
+        if human_readable:
+            summary["named_lists"].append({
+                "target": target.get("name", ""),
+                "list": label,
+                "count": len(values),
+                "values": list(dict.fromkeys(human_readable))[:200]
+            })
+
+summary["character_costume_names"] = {
+    t.get("name", ""): [c.get("name", "") for c in t.get("costumes", [])]
+    for t in targets
+    if t.get("name") in ("編成表", "mikata", "mikata2", "z", "Pico", "味方?teki?キャラ", "図鑑")
+}
+
 # Trace the actual Scratch data blocks for player-owned character lists and
 # currency variables. These records determine how server rewards are applied.
 focus_names = {
