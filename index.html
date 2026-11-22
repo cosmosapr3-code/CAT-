@@ -265,7 +265,7 @@
         if(gameWindow?.scaffolding){
           delete gameWindow.__CAT_CHARACTER_STATS_CONFIG;
           const applied=await applyScratchCharacterStats(gameWindow,true);
-          applyMessage='保存して現在のゲームにも反映しました（味方 '+applied.allyFields+' / 敵 '+applied.enemyFields+' / 生成済み '+applied.cloneFields+'）。';
+          applyMessage='保存して現在のゲームにも反映しました（味方 '+applied.allyFields+' / 敵 '+applied.enemyFields+' / 再生産 '+applied.reproductionChanged+' / 生成済み '+applied.cloneFields+'）。';
         }
       }catch(applyError){
         console.warn('CAT saved stats could not be applied to the running game:',applyError);
