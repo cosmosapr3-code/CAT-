@@ -176,7 +176,7 @@ def svg_costume_title(archive, target, costume_name):
         if not text:
             continue
         transform = node.attrib.get("transform", "")
-        match = re.search(r"translate\\(\\s*[-+0-9.eE]+\\s*,\\s*([-+0-9.eE]+)", transform)
+        match = re.search(r"translate\(\s*[-+0-9.eE]+\s*,\s*([-+0-9.eE]+)", transform)
         if match:
             try:
                 y = float(match.group(1))
