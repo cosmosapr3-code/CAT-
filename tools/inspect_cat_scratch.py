@@ -168,4 +168,32 @@ for target in targets:
 summary["japanese_text_literals"] = sorted(japanese_literals)
 summary["say_and_think_blocks"] = say_blocks[:1000]
 
+# Trace the actual Scratch data blocks for player-owned character lists and
+# currency variables. These records determine how server rewards are applied.
+focus_names = {"味方", "味方キャラ名前", "CAT軍団のレベルセーブ用", "味方キャラ", "経験値", "catチュール", "セーブ？"}
+summary["profile_data_blocks"] = []
+for target in targets:
+    blocks = target.get("blocks", {})
+    for block_id, block in blocks.items():
+        if not isinstance(block, dict):
+            continue
+        fields = block.get("fields", {})
+        inputs = block.get("inputs", {})
+        field_literals = collect_literals(fields)
+        input_literals = collect_literals(inputs)
+        found = sorted(focus_names.intersection(field_literals + input_literals))
+        if not found:
+            continue
+        summary["profile_data_blocks"].append({
+            "target": target.get("name", ""),
+            "blockId": block_id,
+            "opcode": block.get("opcode", ""),
+            "fields": fields,
+            "inputs": inputs,
+            "next": block.get("next"),
+            "parent": block.get("parent"),
+            "topLevel": block.get("topLevel", False),
+            "names": found
+        })
+
 print(json.dumps(summary, ensure_ascii=False, separators=(",", ":")))
