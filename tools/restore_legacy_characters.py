@@ -188,6 +188,44 @@ def svg_costume_title(archive, target, costume_name):
     return min(candidates, key=lambda item: item[0])[1]
 
 
+def svg_gacha_card_name(archive, target, costume_name):
+    """Read an ally's official display name from its original gacha-card SVG."""
+    if not target:
+        return ""
+    costume = next(
+        (item for item in target.get("costumes", [])
+         if str(item.get("name", "")) == str(costume_name)),
+        None
+    )
+    if not costume or costume.get("dataFormat") != "svg":
+        return ""
+    try:
+        root = ET.fromstring(archive.read(costume["md5ext"]))
+    except (KeyError, ET.ParseError, OSError):
+        return ""
+
+    candidates = []
+    for node in root.iter():
+        if node.tag.rsplit("}", 1)[-1] != "text":
+            continue
+        text = "".join(node.itertext()).strip()
+        if not text:
+            continue
+        transform = node.attrib.get("transform", "")
+        match = re.search(r"translate\(\s*[-+0-9.eE]+\s*,\s*([-+0-9.eE]+)", transform)
+        if not match:
+            continue
+        try:
+            y = float(match.group(1))
+        except ValueError:
+            continue
+        # Gacha-card names are printed along the bottom edge (around y=265–292).
+        # Rarity labels and the "next" button are higher up.
+        if y >= 245 and text not in {"次へ", "リセット"}:
+            candidates.append((y, text))
+    return max(candidates, key=lambda item: item[0])[1] if candidates else ""
+
+
 def series_for(code):
     if re.fullmatch(r"z\d+",code): return "はじめの一歩・基本ステージ"
     if re.fullmatch(r"p\d+",code): return "Picoの戦場"
@@ -211,6 +249,18 @@ def main():
     allies = get_list(stage,"味方"); enemies = get_list(stage,"teki")
     panel_target = targets.get("パネル", {})
     ally_prices = extract_ally_prices(panel_target)
+
+    # The original gacha result cards contain the official ally display names
+    # inside the SVG artwork. Their costume names are the same Scratch IDs that
+    # appear in the Stage "味方" list, so this is a direct, non-guessed mapping.
+    gacha_target = targets.get("中身", {})
+    ally_names = {
+        str(costume.get("name", "")): svg_gacha_card_name(
+            archive, gacha_target, costume.get("name", "")
+        )
+        for costume in gacha_target.get("costumes", [])
+    }
+    ally_names = {code: name for code, name in ally_names.items() if name}
 
     # The original production panel stores its gauge growth rate by the
     # Stage "mikata!" order. Convert that rate into an estimated seconds value
@@ -259,7 +309,9 @@ def main():
         ally_frames=animation_frames(archive,targets,["mikata","mikata2"],code,(88,88),60,cache)
         ally_walk,ally_attack=split_animation(ally_frames,ally_image)
         chars.append({
-          "id":ally_id(code),"name":f"味方 {code}","legacyCode":code,"side":"ally",
+          "id":ally_id(code),"name":ally_names.get(str(code), f"味方 {code}"),
+          "gachaName":ally_names.get(str(code),""),"displayName":ally_names.get(str(code),""),
+          "legacyCode":code,"side":"ally",
           "hp":max(1,round(ahp[i])) if i<len(ahp) else 1000,
           "attack":max(1,round(abs(atk[i]))) if i<len(atk) else 100,
           "kb":max(0,round(akb[i])) if i<len(akb) else 1,
