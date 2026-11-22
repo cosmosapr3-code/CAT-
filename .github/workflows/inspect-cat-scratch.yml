@@ -19,10 +19,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Inspect Scratch variables, broadcasts and victory blocks
+      - name: Install image tools
+        run: python -m pip install --upgrade pillow cairosvg
+      - name: Inspect Scratch variables, character names and victory blocks
         run: python tools/inspect_cat_scratch.py | tee scratch-inspection.json
-      - name: Upload inspection summary
+      - name: Upload inspection summary and character contact sheets
         uses: actions/upload-artifact@v4
         with:
           name: scratch-inspection
-          path: scratch-inspection.json
+          path: |
+            scratch-inspection.json
+            ally-contact-sheet.png
+            enemy-contact-sheet.png
