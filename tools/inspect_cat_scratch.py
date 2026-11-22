@@ -196,4 +196,37 @@ for target in targets:
             "names": found
         })
 
+# Reconstruct whole Scratch scripts that read/write the selected profile data.
+summary["profile_data_scripts"] = []
+for target in targets:
+    blocks = target.get("blocks", {})
+    relevant_ids = {
+        entry["blockId"] for entry in summary["profile_data_blocks"]
+        if entry["target"] == target.get("name")
+    }
+    roots = set()
+    for block_id in relevant_ids:
+        current = blocks.get(block_id)
+        seen = set()
+        while isinstance(current, dict) and current.get("parent") and current["parent"] not in seen:
+            seen.add(current["parent"])
+            current = blocks.get(current["parent"])
+        if isinstance(current, dict):
+            roots.add(next((key for key, value in blocks.items() if value is current), block_id))
+    for root_id in sorted(roots):
+        nodes = block_tree(blocks, root_id)
+        if not nodes:
+            continue
+        summary["profile_data_scripts"].append({
+            "target": target.get("name", ""),
+            "root": root_id,
+            "blocks": [{
+                "id": bid,
+                "opcode": block.get("opcode", ""),
+                "fields": block.get("fields", {}),
+                "inputs": block.get("inputs", {}),
+                "next": block.get("next"),
+            } for bid, block in nodes]
+        })
+
 print(json.dumps(summary, ensure_ascii=False, separators=(",", ":")))
