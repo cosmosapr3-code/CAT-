@@ -854,6 +854,7 @@
       throw new Error('Scratch本体の章選択リスト「ステージ章」を初期化できませんでした。');
     const codeById=new Map((me.legacyCharacterCodes||[]).filter(x=>x&&x.id&&x.legacyCode).map(x=>[String(x.id),String(x.legacyCode)]));
     const idByCode=new Map([...codeById].map(([id,code])=>[code,id]));
+    const profile=me.profile||{};
     const adminChapters=(profile.adminUnlockedChapters||[]).map(Number).filter(n=>Number.isInteger(n)&&n>=2&&n<=4);
     const highestAdminChapter=adminChapters.length?Math.max(...adminChapters):0;
     const stageClearList=getScratchEntry(stage,'ステージクリア',true);
@@ -873,7 +874,6 @@
     }
     const localCodes=uniqueStrings(ownedList.value);
     const localOwned=localCodes.map(code=>idByCode.get(code)).filter(Boolean);
-    const profile=me.profile||{};
     const unlockedChapterIds=uniqueStrings(['1',...(Array.isArray(profile.unlockedChapters)?profile.unlockedChapters:[])])
       .filter(id=>['1','2','3','4'].includes(id));
     for(const chapterId of unlockedChapterIds){
@@ -895,7 +895,9 @@
         const id=idByCode.get(String(allyOrder.value[i]));
         if(!id)continue;
         while(levelList.value.length<=i)levelList.value.push(1);
-        const level=Math.max(1,Math.min(100,Math.max(Math.floor(Number(levelList.value[i])||1),Math.floor(Number(nextLevels[id]||1))));
+        const localLevel=Math.floor(Number(levelList.value[i])||1);
+        const savedLevel=Math.floor(Number(nextLevels[id]||1));
+        const level=Math.max(1,Math.min(100,Math.max(localLevel,savedLevel)));
         levelList.value[i]=String(level);
         nextLevels[id]=level;
       }
