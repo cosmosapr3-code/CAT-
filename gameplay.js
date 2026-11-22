@@ -191,10 +191,9 @@
   }
 
   function getVisibleLegacyStages() {
-    const stages = (config.stages || []).filter(item => item.id !== "stage-terra-card" || item.configured === true);
-    if (profile?.chapterAccessEnabled !== true) return stages;
-    const unlocked = new Set(Array.isArray(profile.unlockedChapters) ? profile.unlockedChapters : []);
-    return stages.filter(stage => unlocked.has(stage.series || stage.chapter || 'その他'));
+    // The Scratch campaign chapter picker is separate from this CAT stage list.
+    // Keep the normal stage catalog visible regardless of campaign chapter unlocks.
+    return (config.stages || []).filter(item => item.id !== "stage-terra-card" || item.configured === true);
   }
 
   function renderLegacyStages() {
@@ -239,13 +238,6 @@
   startBattle = function(stageId) {
     if (!LEGACY_DATA) return originalStartBattle(stageId);
     const stage = config.stages.find(x => x.id === stageId); if (!stage) return;
-    const chapterKey = stage.series || stage.chapter || 'その他';
-    if (profile?.chapterAccessEnabled === true &&
-        !(Array.isArray(profile.unlockedChapters) ? profile.unlockedChapters : []).includes(chapterKey)) {
-      toast('この章はまだ開放されていません。運営に章開放を依頼してください。');
-      showPage('stages');
-      return;
-    }
     const team = (profile.team || []).map(charById).filter(c => c && c.side === 'ally' && !c.evolutionOf);
     if (!team.length) { toast('編成で出撃キャラクターを選んでね'); showPage('formation'); return; }
     if (raf) cancelAnimationFrame(raf);
