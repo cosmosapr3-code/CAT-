@@ -259,7 +259,19 @@
       await loadAdminPanel();
       $('cat-stat-character').value=selected.id;
       $('cat-stat-character').dispatchEvent(new Event('change'));
-      $('cat-stat-status').textContent='保存しました。次回のゲーム読み込みから反映されます。';
+      let applyMessage='保存しました。次回のゲーム開始時に反映されます。';
+      try{
+        const gameWindow=frame.contentWindow;
+        if(gameWindow?.scaffolding){
+          delete gameWindow.__CAT_CHARACTER_STATS_CONFIG;
+          const applied=await applyScratchCharacterStats(gameWindow,true);
+          applyMessage='保存して現在のゲームにも反映しました（味方 '+applied.allyFields+' / 敵 '+applied.enemyFields+' / 生成済み '+applied.cloneFields+'）。';
+        }
+      }catch(applyError){
+        console.warn('CAT saved stats could not be applied to the running game:',applyError);
+        applyMessage='D1には保存済みです。現在のゲームへの反映は確認できませんでした。次回起動時に再適用します。';
+      }
+      $('cat-stat-status').textContent=applyMessage;
       toolsError.textContent='能力値を保存しました：'+selected.name;
     }catch(e){$('cat-stat-status').textContent='保存に失敗しました：'+e.message;}
     finally{button.disabled=false;button.textContent='このキャラクターの能力値を保存';}
@@ -458,15 +470,27 @@
     const character=codeMap.get(code);
     if(!character)return 0;
     let changed=0;
-    const fields={移動速度:Number(character.speed||0),射程距離:Number(character.range||0),秒数:Number(character.cooldown||0)};
+    const fields={移動速度:Number(character.speed||0),秒数:Number(character.cooldown||0)};
     for(const [name,value] of Object.entries(fields)){
       const variable=scratchLocalVariable(target,name);
       if(variable&&Number.isFinite(value)){variable.value=value;changed++;}
     }
-    // Clone-local HP variables are initialized after creation in some sprites.
-    for(const name of ["max hp","maxHP"]){
+    // The two ally sprites use different range-variable names.
+    const rangeNames=spriteName==="mikata"
+      ?["射程　味方","syatei","射程距離"]
+      :["射程距離","syatei","射程　味方"];
+    for(const name of rangeNames){
+      const variable=scratchLocalVariable(target,name);
+      if(variable&&Number.isFinite(Number(character.range))){variable.value=Number(character.range);changed++;}
+    }
+    // Apply current and maximum HP/knockback values to the newly-created clone.
+    for(const name of ["max hp","maxHP","HP","hp"]){
       const variable=scratchLocalVariable(target,name);
       if(variable&&Number.isFinite(Number(character.hp))){variable.value=Number(character.hp);changed++;}
+    }
+    for(const name of ["maxKB","KBs","kb"]){
+      const variable=scratchLocalVariable(target,name);
+      if(variable&&Number.isFinite(Number(character.kb))){variable.value=Number(character.kb);changed++;}
     }
     return changed;
   }
@@ -496,9 +520,32 @@
     }
     return changed;
   }
+  function applyScratchPanelReproduction(w,characters){
+    const stage=getScratchStage(w);
+    const panel=scratchTargetByName(w,'パネル');
+    const order=scratchList(stage,'mikata!')?.value||[];
+    const growth=scratchList(panel,'キャラの増え方');
+    if(!growth)return 0;
+    const byCode=new Map((characters||[])
+      .filter(c=>c.side==='ally'&&c.legacyCode)
+      .map(c=>[String(c.legacyCode),c]));
+    let changed=0;
+    for(let i=0;i<order.length;i++){
+      const code=String(order[i]);
+      const character=byCode.get(code)||(code==='kb'?byCode.get('kbi'):null);
+      const seconds=Number(character?.reproduction);
+      if(!character||!Number.isFinite(seconds)||seconds<=0)continue;
+      // Scratch's original production meter fills to 50. Convert the admin
+      // seconds value back into the per-tick increment used by the source game.
+      const rate=Math.max(0.0005,Math.min(2,50/(Math.max(0.01,seconds)*30)));
+      if(setScratchListValue(growth,i,rate,true))changed++;
+    }
+    return changed;
+  }
   async function applyScratchCharacterStats(w,force=false){
     if(w.__CAT_CHARACTER_STATS_APPLIED&&!force)return w.__CAT_CHARACTER_STATS_RESULT||{};
-    const response=await api('/api/config');
+    const response=w.__CAT_CHARACTER_STATS_CONFIG||await api('/api/config');
+    w.__CAT_CHARACTER_STATS_CONFIG=response;
     const characters=response.config?.characters||[];
     const stage=getScratchStage(w);
     if(!stage)throw new Error('Scratchのステージデータがありません。');
@@ -553,6 +600,7 @@
       }
     }
     const pricesChanged=applyScratchPanelPrices(w,characters);
+    const reproductionChanged=applyScratchPanelReproduction(w,characters);
     const runtime=(w.Scratch?.vm||w.scaffolding?.vm)?.runtime;
     const cloneCodeMap=new Map(characters.filter(x=>x.legacyCode).map(x=>[String(x.legacyCode),x]));
     let cloneFields=0;
@@ -567,7 +615,7 @@
       }
       for(const target of runtime.targets||[])cloneFields+=applyScratchCloneStats(target,cloneCodeMap);
     }
-    const result={allyFields,enemyFields,pricesChanged,cloneFields};
+    const result={allyFields,enemyFields,pricesChanged,reproductionChanged,cloneFields};
     w.__CAT_CHARACTER_STATS_RESULT=result;
     w.__CAT_CHARACTER_STATS_APPLIED=true;
     console.info('CAT operator character stats applied:',result);
@@ -771,7 +819,12 @@
       if(!w.__CAT_EXTERNAL_STARTED){
         w.scaffolding.start();
         // Green-flag initialization must finish before the runtime values are re-applied.
-        setTimeout(()=>applyScratchCharacterStats(w,true).catch(err=>console.warn('CAT character stat reapply:',err)),350);
+        for(const delay of [120,350,900,1800]){
+          w.setTimeout(()=>{
+            if(frame.contentWindow!==w||!w.scaffolding)return;
+            applyScratchCharacterStats(w,true).catch(err=>console.warn('CAT character stat reapply:',err));
+          },delay);
+        }
         w.__CAT_EXTERNAL_STARTED=true;
         if(auth?.role==='player'){
           applyScratchPlayerProfile(w).then(result=>{
