@@ -337,6 +337,49 @@ summary["focused_stat_lists"] = {
     if item[0] in stat_list_names
 }
 summary["focused_name_blocks"] = []
+# Capture complete Scratch scripts that reference unit stats, prices, and UI-name values.
+summary["focused_stat_scripts"] = []
+stat_list_terms = {
+    "hp減少", "hpp制御システム", "idousokudo", "攻撃間隔",
+    "syatei mikata", "△味方KB", "敵　金", "hpgs", "teki",
+    "てきさん", "味方", "味方キャラ名前", "敵キャラクター図鑑",
+    "cat　ｃ", "値段", "コスト", "出撃コスト", "お金数", "お金上限"
+}
+for target in targets:
+    blocks = target.get("blocks", {})
+    relevant_ids = set()
+    for block_id, block in blocks.items():
+        if not isinstance(block, dict):
+            continue
+        found = False
+        for value in block.get("fields", {}).values():
+            if isinstance(value, list) and value and value[0] in stat_list_terms:
+                found = True
+        for value in collect_literals(block.get("inputs", {})):
+            if value in stat_list_terms:
+                found = True
+        if found:
+            relevant_ids.add(block_id)
+    roots = set()
+    for block_id in relevant_ids:
+        current = blocks.get(block_id)
+        seen = set()
+        while isinstance(current, dict) and current.get("parent") and current["parent"] not in seen:
+            seen.add(current["parent"])
+            current = blocks.get(current["parent"])
+        if isinstance(current, dict) and current.get("topLevel"):
+            roots.add(next((key for key, value in blocks.items() if value is current), block_id))
+    for root_id in sorted(roots):
+        nodes = block_tree(blocks, root_id)
+        summary["focused_stat_scripts"].append({
+            "target": target.get("name", ""), "root": root_id,
+            "rootOpcode": blocks[root_id].get("opcode", ""),
+            "blocks": [{
+                "id": bid, "opcode": block.get("opcode", ""),
+                "fields": block.get("fields", {}), "inputs": block.get("inputs", {}),
+                "next": block.get("next"), "parent": block.get("parent")
+            } for bid, block in nodes]
+        })
 name_terms = {
     "namae", "味方キャラ名前", "敵キャラクター図鑑",
     "敵名前", "出てくる敵の名前", "味方キャラ"
