@@ -937,6 +937,7 @@ async function handleApi(request, env) {
       role: "player",
       username: s.username,
       profile,
+      updatedAt: Number(row?.updated_at || 0),
       // Only the small ID-to-Scratch-code mapping is sent to the game bridge;
       // never send the image/frame payload in the profile response.
       legacyCharacterCodes: (config.characters || [])
@@ -965,6 +966,7 @@ async function handleApi(request, env) {
       }, 400);
     }
 
+    const profileUpdatedAt = nowSeconds();
     await getDb(env).prepare(
       `INSERT INTO profiles
        (user_id, profile_json, updated_at)
@@ -975,10 +977,10 @@ async function handleApi(request, env) {
     ).bind(
       auth.session.user_id,
       JSON.stringify(profile),
-      nowSeconds()
+      profileUpdatedAt
     ).run();
 
-    return json({ ok: true, profile });
+    return json({ ok: true, profile, updatedAt: profileUpdatedAt });
   }
 
   // ゲーム設定取得
