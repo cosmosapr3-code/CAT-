@@ -200,7 +200,9 @@ function validateProfile(p) {
     completedMissions: ids(p.completedMissions, 1000),
     ownedCards: ids(p.ownedCards, 1000),
     ownedExternalRewards: ids(p.ownedExternalRewards, 1000),
-    unlockedStages: ids(p.unlockedStages, 500)
+    unlockedStages: ids(p.unlockedStages, 500),
+    unlockedChapters: ids(p.unlockedChapters, 100),
+    chapterAccessEnabled: p.chapterAccessEnabled === true
   };
 }
 function starterProfile(config) {
@@ -218,7 +220,9 @@ function starterProfile(config) {
     completedMissions: [],
     ownedCards: [],
     ownedExternalRewards: [],
-    unlockedStages: []
+    unlockedStages: [],
+    unlockedChapters: [],
+    chapterAccessEnabled: false
   };
 }
 
@@ -1152,7 +1156,9 @@ async function handleApi(request, env) {
         reward: c.side === "enemy" ? Number(c.reward || 0) : null
       })),
       externalRewards: EXTERNAL_REWARD_CATALOG.map(item => ({ id: item.id, name: item.name })),
-      stages: (config.stages || []).map(stage => ({ id: stage.id, name: stage.name, legacyCode: stage.legacyCode || "", series: stage.series || stage.chapter || "" }))
+      stages: (config.stages || []).map(stage => ({ id: stage.id, name: stage.name, legacyCode: stage.legacyCode || "", series: stage.series || stage.chapter || "" })),
+      chapters: [...new Set((config.stages || []).map(stage => String(stage.series || stage.chapter || "その他").trim() || "その他"))]
+        .map(id => ({ id, name: id, stageCount: (config.stages || []).filter(stage => (String(stage.series || stage.chapter || "その他").trim() || "その他") === id).length }))
     });
   }
 
@@ -1411,8 +1417,11 @@ async function handleApi(request, env) {
     const characterIds = safeStringIds(body.characterIds, 100).filter(id => (config.characters || []).some(c => c.id === id && c.side === "ally"));
     const externalRewardIds = safeStringIds(body.externalRewardIds, 100).filter(id => EXTERNAL_REWARD_CATALOG.some(item => item.id === id));
     const stageIds = safeStringIds(body.stageIds, 300).filter(id => (config.stages || []).some(stage => stage.id === id));
-    if (!xp && !catChuru && !characterIds.length && !externalRewardIds.length && !stageIds.length) {
-      return json({ error: "配布する経験値・CATチュール・キャラクター・報酬・ステージを1つ以上選んでください。", code: "EMPTY_GRANT" }, 400);
+    const chapterKey = stage => String(stage.series || stage.chapter || "その他").trim() || "その他";
+    const availableChapters = new Set((config.stages || []).map(chapterKey));
+    const chapterIds = safeStringIds(body.chapterIds, 100).filter(id => availableChapters.has(id));
+    if (!xp && !catChuru && !characterIds.length && !externalRewardIds.length && !stageIds.length && !chapterIds.length) {
+      return json({ error: "配布する経験値・CATチュール・キャラクター・報酬・ステージ・章を1つ以上選んでください。", code: "EMPTY_GRANT" }, 400);
     }
 
     let savedProfile = null;
@@ -1428,6 +1437,22 @@ async function handleApi(request, env) {
       }
       for (const id of externalRewardIds) if (!next.ownedExternalRewards.includes(id)) next.ownedExternalRewards.push(id);
       for (const id of stageIds) if (!next.unlockedStages.includes(id)) next.unlockedStages.push(id);
+      let chapterStageIds = [];
+      if (chapterIds.length) {
+        // Once chapter-based access is used, retain visibility for every chapter that already had an individually granted stage.
+        for (const stage of (config.stages || [])) {
+          if (next.unlockedStages.includes(stage.id)) {
+            const key = chapterKey(stage);
+            if (!next.unlockedChapters.includes(key)) next.unlockedChapters.push(key);
+          }
+        }
+        next.chapterAccessEnabled = true;
+        chapterStageIds = [...new Set((config.stages || [])
+          .filter(stage => chapterIds.includes(chapterKey(stage)))
+          .map(stage => stage.id))];
+        for (const id of chapterIds) if (!next.unlockedChapters.includes(id)) next.unlockedChapters.push(id);
+        for (const id of chapterStageIds) if (!next.unlockedStages.includes(id)) next.unlockedStages.push(id);
+      }
       try {
         await saveProfileForUser(db, body.playerId, next, data.row?.profile_json ?? null);
         savedProfile = next;
@@ -1441,7 +1466,12 @@ async function handleApi(request, env) {
     if (!savedProfile) return json({ error: "配布データを保存できませんでした。もう一度お試しください。", code: "GRANT_SAVE_FAILED" }, 409);
     return json({
       ok: true, playerId: body.playerId,
-      added: { xp, catChuru, characterIds, externalRewardIds, stageIds },
+      added: {
+        xp, catChuru, characterIds, externalRewardIds, stageIds, chapterIds,
+        chapterStageIds: chapterIds.length
+          ? (config.stages || []).filter(stage => chapterIds.includes(chapterKey(stage))).map(stage => stage.id)
+          : []
+      },
       profile: savedProfile
     });
   }
@@ -1600,7 +1630,9 @@ async function handleApi(request, env) {
         xp: Number(p.xp || 0),
         ownedCount: Array.isArray(p.owned) ? p.owned.length : 0,
         externalRewardCount: Array.isArray(p.ownedExternalRewards) ? p.ownedExternalRewards.length : 0,
-        unlockedStageCount: Array.isArray(p.unlockedStages) ? p.unlockedStages.length : 0
+        unlockedStageCount: Array.isArray(p.unlockedStages) ? p.unlockedStages.length : 0,
+        unlockedChapterCount: Array.isArray(p.unlockedChapters) ? p.unlockedChapters.length : 0,
+        chapterAccessEnabled: p.chapterAccessEnabled === true
       };
     });
 
