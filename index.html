@@ -117,8 +117,9 @@
     <label class="cat-tools-field">配布先プレイヤー（ステージを追加するユーザー）<select id="cat-admin-player"></select></label>
     <div class="cat-tools-row"><label class="cat-tools-field">追加する経験値<input id="cat-grant-xp" type="number" min="0" max="1000000000" value="0"></label><label class="cat-tools-field">追加するCATチュール<input id="cat-grant-churu" type="number" min="0" max="1000000000" value="0"></label></div>
     <div class="cat-tools-row"><label class="cat-tools-field">配布キャラクター<div id="cat-grant-characters" class="cat-multi"></div></label><label class="cat-tools-field">このユーザーに追加するステージ<div id="cat-grant-stages" class="cat-multi"></div></label><label class="cat-tools-field">TERRACARDへ送るカード報酬<div id="cat-grant-external-rewards" class="cat-multi"></div></label></div>
+    <label class="cat-tools-field">このユーザーに開放する章（選んだ章のステージもまとめて開放）<div id="cat-grant-chapters" class="cat-multi"></div></label>
     <button id="cat-grant-submit" class="cat-tools-action" type="button">この内容を配布</button>
-    <p class="cat-tools-note">数値は現在の所持量に加算。キャラクター・カード・ステージ開放は未所持分だけ追加します。</p>
+    <p class="cat-tools-note">章を選ぶと、その章がプレイヤーに表示され、章内の全ステージが開放されます。個別ステージの開放とは別々に設定できます。</p>
     <div class="cat-tools-section" id="cat-character-stats-editor">
       <h3>⚙️ 全キャラクターの能力値を編集</h3>
       <p class="cat-tools-note">味方・敵の体力、攻撃力、移動速度、攻撃間隔、射程、KBを個別に変更できます。味方だけ生産価格・再生産時間も変更できます。保存内容はD1に記録します。</p>
@@ -296,6 +297,7 @@
     renderMultiSelect('cat-grant-characters',charOptions,'id','displayName');
     renderMultiSelect('cat-mission-characters-input',charOptions,'id','displayName');
     renderMultiSelect('cat-grant-stages',stages,'id','name');
+    renderMultiSelect('cat-grant-chapters',c.chapters||[],'id','name');
     renderMultiSelect('cat-mission-stages-input',stages,'id','name');
     $('cat-mission-stage-input').innerHTML=optionsHtml(stages,'id','name');
     renderMultiSelect('cat-grant-external-rewards',c.externalRewards||[],'id','name');
@@ -450,14 +452,15 @@
       const catChuru=Number($('cat-grant-churu').value||0);
       const characterIds=selectedValues('cat-grant-characters');
       const stageIds=selectedValues('cat-grant-stages');
+      const chapterIds=selectedValues('cat-grant-chapters');
       const externalRewardIds=selectedValues('cat-grant-external-rewards');
-      if(!(xp>0||catChuru>0||characterIds.length||stageIds.length||externalRewardIds.length))
-        throw new Error('配布する経験値・CATチュール・キャラクター・報酬・ステージを1つ以上指定してください。');
+      if(!(xp>0||catChuru>0||characterIds.length||stageIds.length||chapterIds.length||externalRewardIds.length))
+        throw new Error('配布する経験値・CATチュール・キャラクター・報酬・ステージ・章を1つ以上指定してください。');
       button.disabled=true;
       button.textContent='配布中…';
       const result=await api('/api/admin/grants',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({playerId,xp,catChuru,characterIds,stageIds,externalRewardIds})
+        body:JSON.stringify({playerId,xp,catChuru,characterIds,stageIds,chapterIds,externalRewardIds})
       });
       const updated=await api('/api/admin/players');
       const selectedPlayer=updated.players.find(x=>x.id===playerId);
@@ -473,12 +476,15 @@
       $('cat-grant-churu').value='0';
       clearMultiSelect('cat-grant-characters');
       clearMultiSelect('cat-grant-stages');
+      clearMultiSelect('cat-grant-chapters');
       clearMultiSelect('cat-grant-external-rewards');
       toolsError.textContent='配布成功：'+(selectedPlayer?.username||'選択プレイヤー')+
         ' / 経験値 +'+result.added.xp+
         ' / CATチュール +'+result.added.catChuru+
         ' / キャラクター '+result.added.characterIds.length+'体'+
-        ' / このユーザーに追加したステージ '+result.added.stageIds.length+'件'+
+        ' / 個別ステージ '+result.added.stageIds.length+'件'+
+        ' / 開放した章 '+(result.added.chapterIds||[]).length+'章'+
+        ' / 章に含まれるステージ '+(result.added.chapterStageIds||[]).length+'件'+
         ' / TERRACARD連携カード '+result.added.externalRewardIds.length+'件';
     }catch(e){
       toolsError.textContent='配布に失敗しました：'+e.message;
