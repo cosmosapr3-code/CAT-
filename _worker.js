@@ -688,6 +688,15 @@ async function handleApi(request, env) {
           aliases: Array.isArray(character.aliases) ? character.aliases.slice(0, 10) : []
         }));
       }
+      if (url.searchParams.get("includeEffectiveNames") === "1") {
+        const effective = await loadConfig(env, request);
+        health.effectiveCharacters = (effective.characters || []).map(character => ({
+          id: character.id || "",
+          name: character.name || "",
+          side: character.side || "",
+          legacyCode: character.legacyCode || ""
+        }));
+      }
       return json(health);
     } catch (e) {
       return json({ ok: false, error: e.message }, 500);
