@@ -191,9 +191,9 @@
   }
 
   function getVisibleLegacyStages() {
-    // The Scratch campaign chapter picker is separate from this CAT stage list.
-    // Keep the normal stage catalog visible regardless of campaign chapter unlocks.
-    return (config.stages || []).filter(item => item.id !== "stage-terra-card" || item.configured === true);
+    // TERRA CARDは初期状態から第3章のステージ一覧に表示する。
+    // 初期敵1体はWorker側のdefaultTerraStage()で設定し、運営保存後はその編成を使う。
+    return (config.stages || []).filter(item => item && item.id);
   }
 
   function renderLegacyStages() {
