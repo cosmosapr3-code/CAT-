@@ -190,24 +190,36 @@
     });
   }
 
+  function getVisibleLegacyStages() {
+    const stages = (config.stages || []).filter(item => item.id !== "stage-terra-card" || item.configured === true);
+    if (profile?.chapterAccessEnabled !== true) return stages;
+    const unlocked = new Set(Array.isArray(profile.unlockedChapters) ? profile.unlockedChapters : []);
+    return stages.filter(stage => unlocked.has(stage.series || stage.chapter || 'その他'));
+  }
+
   function renderLegacyStages() {
+    const visibleStages = getVisibleLegacyStages();
     const groups = new Map();
-    for (const stage of (config.stages || []).filter(item => item.id !== "stage-terra-card" || item.configured === true)) {
+    for (const stage of visibleStages) {
       const key = stage.series || stage.chapter || 'その他';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(stage);
     }
     const groupHtml = [...groups.entries()].map(([name, stages], index) => `<details class="legacy-stage-group" ${index === 0 ? 'open' : ''}><summary>${escapeHtml(name)}（${stages.length}ステージ）</summary><div class="legacy-stage-grid">${stages.map(s => `<button class="legacy-stage-card ${s.id === selectedStageId ? 'active' : ''}" data-stage="${escapeAttr(s.id)}">${s.titleImage ? `<img src="${escapeAttr(s.titleImage)}" alt="${escapeAttr(s.name)}">` : `<span class="stage-icon">⚔️</span>`}<b>${escapeHtml(s.name)}</b><small>倍率 ×${Number(s.multiplier || 1)} · 報酬 ${money(s.rewardXp || 0)} XP</small></button>`).join('')}</div></details>`).join('');
-    $id('stageList').innerHTML = `<div class="legacy-stage-groups">${groupHtml}</div>`;
-    $id('homeStages').innerHTML = (config.stages || []).slice(0, 3).map(s => `<button class="stage-choice" data-home-stage="${escapeAttr(s.id)}"><span class="stage-icon">⚔️</span><span><b>${escapeHtml(s.name)}</b><span class="muted">${escapeHtml(s.series || s.chapter || '')}</span></span></button>`).join('');
+    $id('stageList').innerHTML = groupHtml
+      ? `<div class="legacy-stage-groups">${groupHtml}</div>`
+      : '<div class="empty">まだ章が開放されていません。運営に章開放を依頼してください。</div>';
+    if (!visibleStages.some(stage => stage.id === selectedStageId)) selectedStageId = visibleStages[0]?.id || null;
+    $id('homeStages').innerHTML = visibleStages.slice(0, 3).map(s => `<button class="stage-choice" data-home-stage="${escapeAttr(s.id)}"><span class="stage-icon">⚔️</span><span><b>${escapeHtml(s.name)}</b><span class="muted">${escapeHtml(s.series || s.chapter || '')}</span></span></button>`).join('');
     document.querySelectorAll('[data-stage]').forEach(b => b.onclick = () => { selectedStageId = b.dataset.stage; renderLegacyStages(); renderLegacyStageDetails(); });
     document.querySelectorAll('[data-home-stage]').forEach(b => b.onclick = () => { selectedStageId = b.dataset.homeStage; showPage('stages'); });
     renderLegacyStageDetails();
   }
 
   function renderLegacyStageDetails() {
-    const stage = config.stages.find(s => s.id === selectedStageId) || config.stages[0];
-    if (!stage) { $id('stageDetails').innerHTML = '<div class="empty">ステージがありません。</div>'; $id('startBattleBtn').disabled = true; return; }
+    const visibleStages = getVisibleLegacyStages();
+    const stage = visibleStages.find(s => s.id === selectedStageId) || visibleStages[0];
+    if (!stage) { $id('stageDetails').innerHTML = '<div class="empty">開放されている章がありません。</div>'; $id('startBattleBtn').disabled = true; return; }
     selectedStageId = stage.id;
     $id('stageDetails').innerHTML = `<h3>${escapeHtml(stage.name)}</h3>${stage.titleImage ? `<img class="legacy-stage-banner" src="${escapeAttr(stage.titleImage)}" alt="${escapeAttr(stage.name)}">` : ''}<div class="statline"><span class="stat">${escapeHtml(stage.series || stage.chapter || '')}</span><span class="stat">倍率 ×${Number(stage.multiplier || 1)}</span><span class="stat">経験値 ${money(stage.rewardXp || 0)}</span><span class="stat">CATチュール ${money(stage.rewardChuru || 0)}</span></div><p>敵の出現ルール：${(stage.enemyWaves || []).length}種類</p>${stage.legacyWaveData === false ? '<small class="muted">元のステージ名・ステージ画像を復元済み。敵の出現タイミングは新バトル用に再設定しています。</small>' : ''}`;
     $id('startBattleBtn').disabled = false;
@@ -227,6 +239,13 @@
   startBattle = function(stageId) {
     if (!LEGACY_DATA) return originalStartBattle(stageId);
     const stage = config.stages.find(x => x.id === stageId); if (!stage) return;
+    const chapterKey = stage.series || stage.chapter || 'その他';
+    if (profile?.chapterAccessEnabled === true &&
+        !(Array.isArray(profile.unlockedChapters) ? profile.unlockedChapters : []).includes(chapterKey)) {
+      toast('この章はまだ開放されていません。運営に章開放を依頼してください。');
+      showPage('stages');
+      return;
+    }
     const team = (profile.team || []).map(charById).filter(c => c && c.side === 'ally' && !c.evolutionOf);
     if (!team.length) { toast('編成で出撃キャラクターを選んでね'); showPage('formation'); return; }
     if (raf) cancelAnimationFrame(raf);
