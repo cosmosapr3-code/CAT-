@@ -231,7 +231,7 @@
     if (!team.length) { toast('編成で出撃キャラクターを選んでね'); showPage('formation'); return; }
     if (raf) cancelAnimationFrame(raf);
     battle = { stage, time:0, playerBase:5000, enemyBase:5000, cash:500, cashMax:5000, cashRate:35, workerLevel:1,
-      units:[], waveState:(stage.enemyWaves || []).map(w => ({wave:w,spawned:0,next:Number(w.at || 0)})),
+      units:[], waveState:(stage.enemyWaves || []).map(w => ({wave:w,spawned:0,next:w.trigger && w.trigger!=='time'?0:Number(w.at || 0)})),
       effects:[],done:false,team,kills:0, spawnSide:0, battleEndTimer:0 };
     playerCooldowns = {};
     $('battleTitle').textContent = stage.name; $('battleResult').classList.add('hidden');
@@ -327,19 +327,33 @@
     battle.cash=Math.min(battle.cashMax,battle.cash+battle.cashRate*dt);
 
     for(const st of battle.waveState){
-      const w=st.wave;
-      if(st.spawned<Number(w.count||1)&&battle.time>=st.next){
+      const w=st.wave,trigger=w.trigger||'time';
+      const threshold=Math.max(1,Math.min(100,Number(w.castleHpPercent??50)))*50;
+      const castleReady=trigger==='enemy_base'?battle.enemyBase<=threshold:
+        trigger==='player_base'?battle.playerBase<=threshold:true;
+      const ready=trigger==='time'?battle.time>=st.next:(castleReady&&battle.time>=st.next);
+      if(st.spawned<Number(w.count||1)&&ready){
         const c=charById(w.characterId);
         if(c&&c.side==='enemy'){
-          const lane=(st.spawned%3)*13;
-          const e=makeUnit(c,'enemy',824+Math.random()*8);
-          e.y=276+lane;
-          const scale=Number(w.hpMultiplier||1)*Number(battle.stage.multiplier||1);
-          e.hp*=scale;e.maxHp=e.hp;e.attack*=Number(w.attackMultiplier||1)*Number(battle.stage.multiplier||1);
-          e.kbRemaining=e.kbTotal;e.nextKbHp=e.kbTotal>1?e.maxHp*(e.kbTotal-1)/e.kbTotal:0;
-          battle.units.push(e);
+          const chance=Math.max(1,Math.min(100,Number(w.spawnChance??100)));
+          if(Math.random()*100<chance){
+            const lane=(st.spawned%3)*13;
+            const e=makeUnit(c,'enemy',824+Math.random()*8);
+            e.y=276+lane;
+            const scale=Number(w.hpMultiplier||1)*Number(battle.stage.multiplier||1);
+            e.hp*=scale;e.maxHp=e.hp;e.attack*=Number(w.attackMultiplier||1)*Number(battle.stage.multiplier||1);
+            e.kbRemaining=e.kbTotal;e.nextKbHp=e.kbTotal>1?e.maxHp*(e.kbRemaining-1)/e.kbTotal:0;
+            e.isBoss=w.boss===true;
+            battle.units.push(e);
+            st.spawned++;
+            if(e.isBoss&&w.shockwave===true){
+              battle.effects.push({kind:'bossShockwave',x:e.x-20,y:e.y-28,life:1.05,max:1.05,color:'#fff0bd'});
+            }
+          }
+        }else{
+          st.spawned++;
         }
-        st.spawned++;st.next=battle.time+Math.max(1,Number(w.interval||10));
+        st.next=battle.time+Math.max(1,Number(w.interval||18));
       }
     }
 
@@ -448,7 +462,7 @@
           Math.floor(u.walkPhase/0.72)%frames.length)
         :-1;
       const src=(frameIndex>=0?frames[frameIndex]:null)||u.char.image||(u.side==='ally'?window.CAT_MEDIA.cat:window.CAT_MEDIA.enemy);
-      const im=getBattleImage(src),ww=68,hh=68;
+      const im=getBattleImage(src),ww=u.isBoss?92:68,hh=u.isBoss?92:68;
       ctx.globalAlpha=u.flash>0?.58:1;
       ctx.fillStyle='#26321c55';ctx.beginPath();ctx.ellipse(x,y-4,23,6,0,0,Math.PI*2);ctx.fill();
       if(im&&im.complete&&im.naturalWidth){
@@ -458,7 +472,8 @@
         ctx.fillStyle=u.side==='ally'?'#e8a849':'#9a5966';ctx.beginPath();ctx.arc(x,y-30,19,0,Math.PI*2);ctx.fill();
       }
       ctx.globalAlpha=1;
-      drawHp(ctx,x-28,y-73,56,5,u.hp/u.maxHp,u.side==='ally'?'#74bb4c':'#dc574c');
+      drawHp(ctx,x-(u.isBoss?34:28),y-(u.isBoss?89:73),u.isBoss?68:56,5,u.hp/u.maxHp,u.side==='ally'?'#74bb4c':'#dc574c');
+      if(u.isBoss){ctx.fillStyle='#ffe6a0';ctx.font='bold 12px sans-serif';ctx.textAlign='center';ctx.fillText('BOSS',x,y-95);}
       if(attacking){
         ctx.strokeStyle=u.side==='ally'?'#fff0a2':'#ffaaaa';ctx.lineWidth=4;ctx.beginPath();
         ctx.arc(x+(u.side==='ally'?25:-25),y-38,15+(1-u.attackAnim/u.attackAnimDuration)*30,-1.15,1.15);ctx.stroke();
@@ -469,7 +484,14 @@
     }
     for(const e of battle.effects){
       const alpha=Math.max(0,e.life/(e.max||.5));ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle=e.color||'#fff';ctx.fillStyle=e.color||'#fff';
-      if(e.kind==='wave'||e.kind==='base'||e.kind==='knockback'){
+      if(e.kind==='bossShockwave'){
+        const progress=1-alpha,radius=24+progress*310;
+        ctx.globalAlpha=alpha*.24;ctx.fillStyle='#fff8df';ctx.fillRect(0,0,w,h);
+        ctx.globalAlpha=alpha;ctx.lineWidth=12*alpha+2;ctx.strokeStyle='#fff3c5';
+        ctx.beginPath();ctx.arc(e.x-progress*150,e.y,radius,0,Math.PI*2);ctx.stroke();
+        ctx.lineWidth=5*alpha+1;ctx.beginPath();ctx.arc(e.x-progress*95,e.y,radius*.62,0,Math.PI*2);ctx.stroke();
+        ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(e.x-30-progress*230,e.y);ctx.lineTo(e.x+100,e.y);ctx.stroke();
+      } else if(e.kind==='wave'||e.kind==='base'||e.kind==='knockback'){
         ctx.lineWidth=e.kind==='wave'?7:5;ctx.beginPath();ctx.arc(e.x,e.y||250,18+(1-alpha)*80,0,Math.PI*2);ctx.stroke();
       } else if(e.kind==='hit'){
         ctx.lineWidth=e.critical?5:3;ctx.beginPath();ctx.moveTo(e.x-16,e.y-5);ctx.lineTo(e.x+16,e.y+5);ctx.moveTo(e.x+4,e.y-19);ctx.lineTo(e.x-4,e.y+19);ctx.stroke();
