@@ -297,6 +297,26 @@ function defaultTerraStage() {
   return { id: TERRA_STAGE_ID, name: "TERRA CARD", series: "運営ステージ", chapter: "運営ステージ",
     description: "敵キャラクターと倍率を運営が設定するステージ", configured: false, multiplier: 1, rewardXp: 0, rewardChuru: 0, music: "", enemyWaves: [] };
 }
+function resolveCharacterDisplayName(character) {
+  if (!character || typeof character !== "object") return "";
+  const candidates = [
+    character.displayName,
+    character.originalName,
+    character.nickname,
+    ...(Array.isArray(character.aliases) ? character.aliases : [])
+  ].map(value => String(value || "").trim()).filter(Boolean);
+  const current = String(character.name || "").trim();
+  const looksLikeInternalCode = value =>
+    /^(?:味方|敵)[a-z0-9_-]+$/i.test(value) ||
+    /^(?:ally|enemy)[-_]?[a-z0-9_-]+$/i.test(value) ||
+    /^(?:味方|敵)\\d+$/u.test(value);
+  if (looksLikeInternalCode(current)) {
+    const meaningful = candidates.find(value => !looksLikeInternalCode(value));
+    if (meaningful) return meaningful;
+  }
+  return current || candidates[0] || "";
+}
+
 async function loadConfig(env, request) {
   const legacyData=await loadLegacyGameData(env,request);
   const legacyCharacters=Array.isArray(legacyData?.characters)?legacyData.characters:null;
@@ -330,6 +350,14 @@ async function loadConfig(env, request) {
       }
     } catch(error) { console.error("Character name overrides could not be read:",error); }
   }
+  // Scratch内部コード（味方n・敵pなど）を画面名として出さず、
+  // 元データに正式名がある場合はそちらを優先する。
+  config.characters = (config.characters || []).map(character => {
+    const displayName = resolveCharacterDisplayName(character);
+    return displayName && displayName !== character.name
+      ? { ...character, name: displayName }
+      : character;
+  });
   return config;
 }
 function mergeLegacyStages(legacyStages,savedStages) {
@@ -1061,9 +1089,14 @@ async function handleApi(request, env) {
     const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
     const config = await loadConfig(env, request);
     return json({
-      characters: (config.characters || []).filter(c => c.side === "ally").map(c => ({ id: c.id, name: c.name })),
-      enemies: (config.characters || []).filter(c => c.side === "enemy").map(c => ({ id: c.id, name: c.name })),
-      allCharacters: (config.characters || []).map(c => ({ id: c.id, name: c.name, side: c.side, legacyCode: c.legacyCode || "" })),
+      characters: (config.characters || []).filter(c => c.side === "ally").map(c => ({ id: c.id, name: resolveCharacterDisplayName(c), legacyCode: c.legacyCode || "" })),
+      enemies: (config.characters || []).filter(c => c.side === "enemy").map(c => ({ id: c.id, name: resolveCharacterDisplayName(c), legacyCode: c.legacyCode || "" })),
+      allCharacters: (config.characters || []).map(c => ({
+        id: c.id, name: resolveCharacterDisplayName(c), side: c.side,
+        legacyCode: c.legacyCode || "", displayName: c.displayName || "",
+        originalName: c.originalName || "", nickname: c.nickname || "",
+        aliases: Array.isArray(c.aliases) ? c.aliases.slice(0, 10) : []
+      })),
       externalRewards: EXTERNAL_REWARD_CATALOG.map(item => ({ id: item.id, name: item.name })),
       stages: (config.stages || []).map(stage => ({ id: stage.id, name: stage.name, legacyCode: stage.legacyCode || "", series: stage.series || stage.chapter || "" }))
     });
