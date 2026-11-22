@@ -22,6 +22,41 @@ def numbers(values, default=0):
         except (TypeError, ValueError): out.append(float(default))
     return out
 
+def scratch_input_value(value):
+    """Read a Scratch shadow/field value from its serialized input tuple."""
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, list) and len(item) > 1:
+                return item[1]
+        if len(value) > 1 and not isinstance(value[1], list):
+            return value[1]
+    return ""
+
+def extract_ally_prices(panel_target):
+    """Read the real per-unit prices passed to the original 'n %s cat c %s' block."""
+    prices = {}
+    for block in panel_target.get("blocks", {}).values():
+        if not isinstance(block, dict) or block.get("opcode") != "procedures_call":
+            continue
+        mutation = block.get("mutation") or {}
+        if mutation.get("proccode") != "n %s cat c %s 1or2? %s":
+            continue
+        try:
+            argument_ids = json.loads(mutation.get("argumentids", "[]"))
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if len(argument_ids) < 2:
+            continue
+        code = str(scratch_input_value(block.get("inputs", {}).get(argument_ids[0], ""))).strip()
+        raw_cost = scratch_input_value(block.get("inputs", {}).get(argument_ids[1], ""))
+        try:
+            price = float(raw_cost)
+        except (TypeError, ValueError):
+            continue
+        if code:
+            prices[code] = max(0, round(price))
+    return prices
+
 def slug_code(code):
     return "-".join(f"{ord(ch):x}" for ch in str(code)) or "empty"
 
@@ -133,6 +168,10 @@ def main():
     targets = {t["name"]:t for t in project["targets"]}
     stage = targets["Stage"]; cache = {}
     allies = get_list(stage,"味方"); enemies = get_list(stage,"teki")
+    ally_prices = extract_ally_prices(targets.get("パネル", {}))
+    if len(ally_prices) < len(allies):
+        missing = [code for code in allies if code not in ally_prices]
+        raise RuntimeError(f"Could not recover original gacha prices for: {missing}")
     ahp=numbers(get_list(stage,"hpp制御システム")); atk=numbers(get_list(stage,"hp減少"))
     speed=numbers(get_list(stage,"idousokudo")); reach=numbers(get_list(stage,"syatei mikata"))
     akb=numbers(get_list(stage,"△味方KB")); interval=numbers(get_list(stage,"攻撃間隔"))
@@ -166,7 +205,7 @@ def main():
           "kb":max(0,round(akb[i])) if i<len(akb) else 1,
           "range":max(1,reach[i]) if i<len(reach) else 100,
           "speed":max(0.1,speed[i]) if i<len(speed) else 2,
-          "cost":50+25*(i%8),"cooldown":max(0.8,min(30,interval[i])) if i<len(interval) else 3,
+          "cost":ally_prices[code],"cooldown":max(0.8,min(30,interval[i])) if i<len(interval) else 3,
           "reproduction":max(3,5+(i%7)*2),
           "rarity":["normal","rare","superRare","uberRare"][min(3,i*4//max(1,len(allies)))],
           "attributes":["旧ゲーム引継ぎ"],"abilities":[],
@@ -196,7 +235,7 @@ def main():
         enemy_frames=animation_frames(archive,targets,[source],code,(88,88),60,cache)
         enemy_walk,enemy_attack=split_animation(enemy_frames,data_uri(archive,targets,source,code,(64,64),64,cache))
         enemies_out.append({
-          "id":uid,"name":f"敵 {code}","legacyCode":code,"side":"enemy",
+          "id":uid,"name":(str(code) if any("\u3040" <= ch <= "\u30ff" or "\u4e00" <= ch <= "\u9fff" for ch in str(code)) else f"敵 {code}"),"legacyCode":code,"side":"enemy",
           "hp":max(1,round(hp)),"attack":max(1,round(atk_by.get(code,100))),
           "kb":max(0,round(kb)),"range":100,"speed":18,"cost":0,"cooldown":3,
           "reward":max(5,round(cash[i])) if i<len(cash) else 30,
