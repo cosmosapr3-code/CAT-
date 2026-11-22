@@ -294,8 +294,8 @@ function mergeCharacterRoster(legacyCharacters, savedCharacters) {
 
 const TERRA_STAGE_ID = "stage-terra-card";
 function defaultTerraStage() {
-  return { id: TERRA_STAGE_ID, name: "TERRA CARD", series: "運営ステージ", chapter: "運営ステージ",
-    description: "敵キャラクターと倍率を運営が設定するステージ", configured: false, multiplier: 1, rewardXp: 0, rewardChuru: 0, music: "", enemyWaves: [] };
+  return { id: TERRA_STAGE_ID, name: "TERRA CARD", series: "第3章", chapter: "第3章",
+    description: "運営が敵キャラクター・倍率・出現数を設定するステージ", configured: false, multiplier: 1, rewardXp: 0, rewardChuru: 0, music: "", enemyWaves: [] };
 }
 function resolveCharacterDisplayName(character) {
   if (!character || typeof character !== "object") return "";
@@ -1246,7 +1246,7 @@ async function handleApi(request, env) {
     return json({ ok: true, updated: result });
   }
 
-  // TERRA CARD is a new CAT stage. Operators set its enemy roster and stage multiplier.
+  // TERRA CARD is part of Chapter 3. Operators control global strength and each enemy wave.
   if (path === "/api/admin/terra-stage" && method === "GET") {
     const auth = await requireAdmin(request, env); if (auth.error) return auth.error;
     const config = await loadConfig(env, request);
@@ -1258,14 +1258,44 @@ async function handleApi(request, env) {
     const body = await request.json().catch(() => ({}));
     const config = await loadConfig(env, request);
     const multiplier = Number(body.multiplier);
-    if (!Number.isFinite(multiplier) || multiplier < 0.1 || multiplier > 100) return json({ error: "倍率は0.1〜100の範囲で指定してください。" }, 400);
+    if (!Number.isFinite(multiplier) || multiplier < 0.1 || multiplier > 100) return json({ error: "ステージ倍率は0.1〜100の範囲で指定してください。" }, 400);
     const available = new Set((config.characters || []).filter(c => c.side === "enemy").map(c => c.id));
-    const enemyIds = safeStringIds(body.enemyIds, 10).filter(id => available.has(id));
-    if (!enemyIds.length) return json({ error: "敵キャラクターを1体以上選んでください。" }, 400);
     const previous = (config.stages || []).find(item => item.id === TERRA_STAGE_ID) || defaultTerraStage();
-    const stage = { ...previous, id: TERRA_STAGE_ID, name: "TERRA CARD", series: "運営ステージ", chapter: "運営ステージ",
-      description: "運営が設定した敵キャラクターと倍率で戦うステージ", configured: true, multiplier,
-      enemyWaves: enemyIds.map((characterId, index) => ({ characterId, at: 4 + index * 12, interval: 18, count: 1, hpMultiplier: 1, attackMultiplier: 1 })) };
+    let enemyWaves = [];
+    if (Array.isArray(body.enemyWaves)) {
+      if (body.enemyWaves.length > 100) return json({ error: "敵キャラクターは100種類以内で設定してください。" }, 400);
+      const seen = new Set();
+      for (const [index, input] of body.enemyWaves.entries()) {
+        if (!input || typeof input.characterId !== "string" || !available.has(input.characterId) || seen.has(input.characterId)) {
+          return json({ error: "敵キャラクターの選択内容が正しくありません。" }, 400);
+        }
+        seen.add(input.characterId);
+        const count = Number(input.count ?? 1);
+        const hpMultiplier = Number(input.hpMultiplier ?? 1);
+        const attackMultiplier = Number(input.attackMultiplier ?? 1);
+        if (!Number.isInteger(count) || count < 1 || count > 1000) return json({ error: "敵の出現数は1〜1000体で指定してください。" }, 400);
+        if (!Number.isFinite(hpMultiplier) || hpMultiplier < 0.1 || hpMultiplier > 1000 ||
+            !Number.isFinite(attackMultiplier) || attackMultiplier < 0.1 || attackMultiplier > 1000) {
+          return json({ error: "敵ごとの体力・攻撃倍率は0.1〜1000の範囲で指定してください。" }, 400);
+        }
+        enemyWaves.push({
+          characterId: input.characterId,
+          at: Math.max(0, Math.min(86400, Math.floor(Number(input.at ?? (4 + index * 12)) || 0))),
+          interval: Math.max(1, Math.min(3600, Math.floor(Number(input.interval ?? 18) || 18))),
+          count, hpMultiplier, attackMultiplier
+        });
+      }
+    } else {
+      const enemyIds = safeStringIds(body.enemyIds, 100).filter(id => available.has(id));
+      enemyWaves = enemyIds.map((characterId, index) => ({
+        characterId, at: 4 + index * 12, interval: 18, count: 1, hpMultiplier: 1, attackMultiplier: 1
+      }));
+    }
+    if (!enemyWaves.length) return json({ error: "敵キャラクターを1体以上選んでください。" }, 400);
+    const enemyIds = enemyWaves.map(w => w.characterId);
+    const stage = { ...previous, id: TERRA_STAGE_ID, name: "TERRA CARD", series: "第3章", chapter: "第3章",
+      description: "運営が設定した敵キャラクター・出現数・倍率で戦うステージ", configured: true, multiplier,
+      enemyWaves };
     const next = { ...config, stages: [...(config.stages || []).filter(item => item.id !== TERRA_STAGE_ID), stage] };
     const configToSave = structuredClone(next);
     for (const character of (configToSave.characters || [])) {
@@ -1277,7 +1307,7 @@ async function handleApi(request, env) {
     const encoded = JSON.stringify(configToSave);
     if (encoded.length > 900000) return json({ error: "設定データが大きすぎます。" }, 413);
     await getDb(env).prepare("INSERT INTO game_config (config_key, value_json, updated_at) VALUES ('main', ?, ?) ON CONFLICT(config_key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at").bind(encoded, nowSeconds()).run();
-    return json({ ok: true, stage, selectedEnemyIds: enemyIds });
+    return json({ ok: true, stage, selectedEnemyIds: enemyIds, selectedEnemyWaves: enemyWaves });
   }
 
   // Admin mission editor; the fixed TERRA CARD mission is always retained.
