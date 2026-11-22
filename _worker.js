@@ -1258,7 +1258,7 @@ async function handleApi(request, env) {
     const body = await request.json().catch(() => ({}));
     const config = await loadConfig(env, request);
     const multiplier = Number(body.multiplier);
-    if (!Number.isFinite(multiplier) || multiplier < 0.1 || multiplier > 100) return json({ error: "ステージ倍率は0.1〜100の範囲で指定してください。" }, 400);
+    if (!Number.isFinite(multiplier) || multiplier < 0.01 || multiplier > 1000) return json({ error: "ステージ共通倍率は0.01〜1000の範囲で指定してください。" }, 400);
     const available = new Set((config.characters || []).filter(c => c.side === "enemy").map(c => c.id));
     const previous = (config.stages || []).find(item => item.id === TERRA_STAGE_ID) || defaultTerraStage();
     let enemyWaves = [];
@@ -1270,26 +1270,34 @@ async function handleApi(request, env) {
           return json({ error: "敵キャラクターの選択内容が正しくありません。" }, 400);
         }
         seen.add(input.characterId);
-        const count = Number(input.count ?? 1);
-        const hpMultiplier = Number(input.hpMultiplier ?? 1);
-        const attackMultiplier = Number(input.attackMultiplier ?? 1);
-        const spawnChance = Number(input.spawnChance ?? 100);
-        const castleHpPercent = Number(input.castleHpPercent ?? 50);
+        const count = input.count === "" ? NaN : Number(input.count ?? 1);
+        const hpMultiplier = input.hpMultiplier === "" ? NaN : Number(input.hpMultiplier ?? 1);
+        const attackMultiplier = input.attackMultiplier === "" ? NaN : Number(input.attackMultiplier ?? 1);
+        const spawnChance = input.spawnChance === "" ? NaN : Number(input.spawnChance ?? 100);
         const trigger = String(input.trigger || "time");
-        if (!Number.isInteger(count) || count < 1 || count > 1000) return json({ error: "敵の出現数は1〜1000体で指定してください。" }, 400);
-        if (!Number.isFinite(hpMultiplier) || hpMultiplier < 0.1 || hpMultiplier > 1000 ||
-            !Number.isFinite(attackMultiplier) || attackMultiplier < 0.1 || attackMultiplier > 1000) {
-          return json({ error: "敵ごとの体力・攻撃倍率は0.1〜1000の範囲で指定してください。" }, 400);
-        }
         if (!["time", "enemy_base", "player_base"].includes(trigger)) return json({ error: "敵の出現条件が正しくありません。" }, 400);
-        if (!Number.isFinite(spawnChance) || spawnChance < 1 || spawnChance > 100) return json({ error: "出現確率は1〜100%で指定してください。" }, 400);
-        if (!Number.isFinite(castleHpPercent) || castleHpPercent < 1 || castleHpPercent > 100) return json({ error: "城HP条件は1〜100%で指定してください。" }, 400);
+        const at = trigger === "time"
+          ? (input.at === "" ? NaN : Number(input.at ?? (4 + index * 12)))
+          : 0;
+        const interval = input.interval === "" ? NaN : Number(input.interval ?? 18);
+        const castleHpPercent = trigger === "time"
+          ? 50
+          : (input.castleHpPercent === "" ? NaN : Number(input.castleHpPercent ?? 50));
+        if (!Number.isInteger(count) || count < 1 || count > 10000) return json({ error: "敵の出現数は1〜10000体の整数で指定してください。" }, 400);
+        if (!Number.isInteger(at) || at < 0 || at > 31536000) return json({ error: "時間経過型の出現開始時間は0〜31536000秒の整数で指定してください。" }, 400);
+        if (!Number.isInteger(interval) || interval < 1 || interval > 86400) return json({ error: "再出現間隔は1〜86400秒の整数で指定してください。" }, 400);
+        if (!Number.isFinite(hpMultiplier) || hpMultiplier < 0.01 || hpMultiplier > 10000 ||
+            !Number.isFinite(attackMultiplier) || attackMultiplier < 0.01 || attackMultiplier > 10000) {
+          return json({ error: "敵ごとの体力・攻撃倍率は0.01〜10000の範囲で指定してください。" }, 400);
+        }
+        if (!Number.isFinite(spawnChance) || spawnChance < 0.1 || spawnChance > 100) return json({ error: "出現確率は0.1〜100%の範囲で指定してください。" }, 400);
+        if (!Number.isFinite(castleHpPercent) || castleHpPercent < 0 || castleHpPercent > 100) return json({ error: "城HP条件は0〜100%の範囲で指定してください。" }, 400);
         enemyWaves.push({
           characterId: input.characterId,
           trigger,
           castleHpPercent,
-          at: Math.max(0, Math.min(86400, Math.floor(Number(input.at ?? (4 + index * 12)) || 0))),
-          interval: Math.max(1, Math.min(3600, Math.floor(Number(input.interval ?? 18) || 18))),
+          at,
+          interval,
           count, spawnChance, hpMultiplier, attackMultiplier,
           boss: input.boss === true,
           shockwave: input.boss === true && input.shockwave === true
