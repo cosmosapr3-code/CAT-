@@ -226,6 +226,35 @@ def svg_gacha_card_name(archive, target, costume_name):
     return max(candidates, key=lambda item: item[0])[1] if candidates else ""
 
 
+# Verified against the original Scratch "中身" gacha reveal costumes.
+# Some distribution HTML builds strip the SVG text layer, so retain the
+# extracted code/name pairs as a stable fallback for those builds.
+ORIGINAL_GACHA_NAMES = {
+    "n": "リーダーCat",
+    "t": "壁Cat",
+    "p": "パワーCat",
+    "m": "魔法Cat",
+    "a": "アイテムCat",
+    "ス": "スケートCat",
+    "!": "バグCAT",
+    "nz": "猫忍者",
+    "sc": "飛行CAT",
+    "pk": "猫隊員　偽",
+    "o": "王様Cat",
+    "k": "剣士Cat",
+    "sn": "Sans",
+    "kbi": "カービィ",
+    "gn": "五条猫る",
+    "h": "桜の猫女王",
+    "kc": "金田猫助",
+    "ds": "ダイソンCAT",
+    "tf": "T-falCAT",
+    "dc": "スマッシュCAT",
+    "ps": "パラソルCAT",
+    "nt": "猫隊員",
+}
+
+
 def series_for(code):
     if re.fullmatch(r"z\d+",code): return "はじめの一歩・基本ステージ"
     if re.fullmatch(r"p\d+",code): return "Picoの戦場"
@@ -253,22 +282,20 @@ def main():
     # The original gacha result cards contain the official ally display names
     # inside the SVG artwork. Their costume names are the same Scratch IDs that
     # appear in the Stage "味方" list, so this is a direct, non-guessed mapping.
-    matching_targets = {
-        name: [costume.get("name", "") for costume in target.get("costumes", [])]
-        for name, target in targets.items()
-        if "中身" in name or "ガチャ" in name or "中" in name
-    }
-    print("Gacha-related Scratch targets: " + json.dumps(matching_targets, ensure_ascii=False))
     gacha_target = targets.get("中身", {})
-    ally_names = {
+    extracted_gacha_names = {
         str(costume.get("name", "")): svg_gacha_card_name(
             archive, gacha_target, costume.get("name", "")
         )
         for costume in gacha_target.get("costumes", [])
     }
-    ally_names = {code: name for code, name in ally_names.items() if name}
-    print("Recovered ally names from gacha SVGs: " + str(len(ally_names)) + " / " + str(len(allies)))
-    print("Gacha name map: " + json.dumps(ally_names, ensure_ascii=False, sort_keys=True))
+    extracted_gacha_names = {
+        code: name for code, name in extracted_gacha_names.items() if name
+    }
+    # Prefer SVG text recovered from the embedded project, then fill missing
+    # entries from the verified original gacha-card mapping above.
+    ally_names = {**ORIGINAL_GACHA_NAMES, **extracted_gacha_names}
+    print("Recovered ally names from gacha data: " + str(len(ally_names)) + " / " + str(len(allies)))
 
     # The original production panel stores its gauge growth rate by the
     # Stage "mikata!" order. Convert that rate into an estimated seconds value
