@@ -1126,9 +1126,15 @@ async function handleApi(request, env) {
         "SELECT profile_json FROM profiles WHERE user_id = ?"
       ).bind(auth.session.user_id).first();
       const expectedExists = body.expectedProfileExists !== false;
-      const expectedJson = JSON.stringify(body.expectedProfile);
+      const expectedCanonical = JSON.stringify(validateProfile(body.expectedProfile));
+      let currentCanonical = "";
+      try {
+        currentCanonical = current?.profile_json
+          ? JSON.stringify(validateProfile(JSON.parse(current.profile_json)))
+          : "";
+      } catch {}
       if (expectedExists) {
-        if (!current?.profile_json || current.profile_json !== expectedJson) {
+        if (!currentCanonical || currentCanonical !== expectedCanonical) {
           return json({ error: "プロフィールが更新されました。最新データを読み直してください。", code: "PROFILE_CONFLICT" }, 409);
         }
         const updated = await db.prepare(
