@@ -665,6 +665,86 @@
       }catch(err){console.warn('CAT stage-clear watcher:',err);}
     },400);
   }
+  const CAT_COMBO_LABELS={
+    '@発動':'都市伝説の剣士：攻撃力アップ（極）',
+    'kc発動':'金持ちパワー：初期お金レベルアップ（大）',
+    'ntpma発動':'CATの力2：味方の体力アップ（中）',
+    'ntp発動':'CATの力：CAT城の体力アップ（中）',
+    'sbk発動':'スピードスター：味方のスピードアップ（大）',
+    'b発動':'伝説の戦士：攻撃力アップ（大）',
+    'kn発動':'推理力：CAT城の体力アップ（大）',
+    'sans発動':'Sansキラー：サンズキラーアップ（極）',
+    'hosi発動':'☆コンボ'
+  };
+  function startScratchFormationTools(w){
+    if(w.__CAT_FORMATION_TOOLS_TIMER)return;
+    let ui=null;
+    const makeUi=()=>{
+      if(ui&&ui.root?.isConnected)return ui;
+      const doc=w.document;
+      if(!doc?.body)return null;
+      const root=doc.createElement('div');
+      root.id='cat-formation-combo-helper';
+      Object.assign(root.style,{position:'fixed',right:'8px',top:'54px',zIndex:'2147483000',display:'none',pointerEvents:'none',fontFamily:'system-ui,sans-serif'});
+      const button=doc.createElement('button');
+      button.type='button';
+      button.textContent='コンボ確認（0）';
+      Object.assign(button.style,{pointerEvents:'auto',minHeight:'44px',padding:'9px 13px',border:'2px solid #e3bd67',borderRadius:'12px',background:'#302313',color:'#fff0bf',fontSize:'14px',fontWeight:'800',boxShadow:'0 3px 12px #0009',touchAction:'manipulation'});
+      const panel=doc.createElement('div');
+      Object.assign(panel.style,{display:'none',pointerEvents:'auto',marginTop:'7px',width:'min(270px,70vw)',maxHeight:'42vh',overflowY:'auto',padding:'11px',border:'2px solid #e3bd67',borderRadius:'12px',background:'rgba(18,16,12,.97)',color:'#fff',fontSize:'13px',lineHeight:'1.55',boxShadow:'0 5px 18px #000b'});
+      const heading=doc.createElement('div');
+      heading.textContent='現在発動中のコンボ';
+      Object.assign(heading.style,{fontWeight:'900',color:'#ffe09a',marginBottom:'7px'});
+      panel.appendChild(heading);
+      button.addEventListener('click',()=>{panel.style.display=panel.style.display==='none'?'block':'none';});
+      root.append(button,panel);
+      doc.body.appendChild(root);
+      ui={root,button,panel,heading};
+      return ui;
+    };
+    w.__CAT_FORMATION_TOOLS_TIMER=w.setInterval(()=>{
+      try{
+        const targets=scratchTargets(w);
+        const miscOriginal=targets.find(t=>t?.sprite?.name==='その他'&&t.isOriginal!==false);
+        const vm=w.Scratch?.vm||w.scaffolding?.vm;
+        for(const target of targets){
+          if(!target||target.sprite?.name!=='その他')continue;
+          const costume=String(target.getCostumeName?.()||target.sprite?.costumes?.[target.currentCostume]?.name||'');
+          const clone=target.isOriginal===false||(miscOriginal&&target!==miscOriginal);
+          if(clone&&(costume==='セ'||costume==='ロ')&&target.visible!==false){
+            target.visible=false;
+            try{vm?.renderer?.updateDrawableVisible?.(target.drawableID,false);}catch{}
+          }
+        }
+        const host=makeUi();
+        if(!host)return;
+        const formation=targets.find(t=>t&&(t.sprite?.name==='編成表'||t.getName?.()==='編成表'));
+        if(!formation?.visible){
+          host.root.style.display='none';
+          host.panel.style.display='none';
+          return;
+        }
+        host.root.style.display='block';
+        const stage=getScratchStage(w);
+        const values=scratchList(stage,'コンボ一覧')?.value||[];
+        const active=[...new Set(values.map(value=>String(value||'').trim()).filter(key=>CAT_COMBO_LABELS[key]))];
+        host.button.textContent='コンボ確認（'+active.length+'）';
+        while(host.panel.childNodes.length>1)host.panel.removeChild(host.panel.lastChild);
+        if(!active.length){
+          const empty=w.document.createElement('div');
+          empty.textContent='現在発動中のコンボはありません。';
+          host.panel.appendChild(empty);
+        }else{
+          for(const key of active){
+            const row=w.document.createElement('div');
+            row.textContent='・'+CAT_COMBO_LABELS[key];
+            Object.assign(row.style,{padding:'6px 2px',borderBottom:'1px solid #65543a'});
+            host.panel.appendChild(row);
+          }
+        }
+      }catch(error){console.warn('[CAT] formation combo helper failed:',error);}
+    },300);
+  }
   function getScratchStage(w){
     const vm=w?.Scratch?.vm||w?.scaffolding?.vm;
     return (vm?.runtime?.targets||[]).find(target=>target&&target.isStage)||null;
@@ -1125,7 +1205,10 @@
         const stageUnlockReady=applyScratchStageUnlocks(w).catch(err=>console.warn('CAT stage unlock sync failed:',err));
         // Establish the clear-list baseline only after all automatic unlocks are merged,
         // so an operator grant cannot be mistaken for a freshly beaten stage.
-        Promise.all([profileReady,stageUnlockReady]).finally(()=>startScratchStageClearWatcher(w));
+        Promise.all([profileReady,stageUnlockReady]).finally(()=>{
+          startScratchStageClearWatcher(w);
+          startScratchFormationTools(w);
+        });
       }
       w.focus();frame.focus();
       startGate.hidden=true;
