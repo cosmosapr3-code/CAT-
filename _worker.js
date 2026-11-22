@@ -296,8 +296,11 @@ function mergeCharacterRoster(legacyCharacters, savedCharacters) {
 
 const TERRA_STAGE_ID = "stage-terra-card";
 function defaultTerraStage() {
+  // 初期状態でも第3章から遊べるよう、既存の敵1体を仮設定しておく。
+  // 運営が敵編成を保存した場合は、その編成で上書きされる。
   return { id: TERRA_STAGE_ID, name: "TERRA CARD", series: "第3章", chapter: "第3章",
-    description: "運営が敵キャラクター・倍率・出現数を設定するステージ", configured: false, multiplier: 1, rewardXp: 0, rewardChuru: 0, music: "", enemyWaves: [] };
+    description: "運営が敵キャラクター・倍率・出現数を設定するステージ", configured: true, multiplier: 1, rewardXp: 0, rewardChuru: 0, music: "",
+    enemyWaves: [{ characterId: "enemy-pico", trigger: "time", castleHpPercent: 50, at: 4, interval: 18, count: 1, spawnChance: 100, hpMultiplier: 1, attackMultiplier: 1, boss: false, shockwave: false }] };
 }
 function resolveCharacterDisplayName(character) {
   if (!character || typeof character !== "object") return "";
@@ -413,10 +416,18 @@ function mergeLegacyStages(legacyStages,savedStages) {
   for(const saved of (Array.isArray(savedStages)?savedStages:[])) {
     if(!saved||typeof saved.id!=="string"||saved.id==="stage-1")continue;
     const original=map.get(saved.id);
-    map.set(saved.id,original?{...original,...saved,
+    const merged=original?{...original,...saved,
       titleImage:saved.titleImage?.startsWith("data:image/")?saved.titleImage:original.titleImage,
-      enemyWaves:Array.isArray(saved.enemyWaves)?saved.enemyWaves:original.enemyWaves}:saved);
+      enemyWaves:Array.isArray(saved.enemyWaves)&&saved.enemyWaves.length?saved.enemyWaves:original.enemyWaves}:saved;
+    if(saved.id===TERRA_STAGE_ID) {
+      if(!Array.isArray(merged.enemyWaves)||!merged.enemyWaves.length) merged.enemyWaves=defaultTerraStage().enemyWaves;
+      // 古いDBに未設定プレースホルダーがあっても、TERRA CARDを一覧から消さない。
+      merged.configured=true;
+      merged.series="第3章";merged.chapter="第3章";merged.name="TERRA CARD";
+    }
+    map.set(saved.id,merged);
   }
+  if(!map.has(TERRA_STAGE_ID))map.set(TERRA_STAGE_ID,defaultTerraStage());
   return [...map.values()];
 }
 
@@ -1453,7 +1464,7 @@ async function handleApi(request, env) {
     const body = await request.json().catch(() => ({}));
     if (typeof body.playerId !== "string" || !body.playerId) return json({ error: "配布先プレイヤーが指定されていません。" }, 400);
     const config = await loadConfig(env, request), db = getDb(env);
-    const user = await db.prepare("SELECT id FROM users WHERE id = ?").bind(body.playerId).first();
+    const user = await db.prepare("SELECT id, username FROM users WHERE id = ?").bind(body.playerId).first();
     if (!user) return json({ error: "プレイヤーが見つかりません。", code: "PLAYER_NOT_FOUND" }, 404);
 
     const xp = boundedInt(body.xp), catChuru = boundedInt(body.catChuru);
@@ -1492,10 +1503,25 @@ async function handleApi(request, env) {
       }
     }
     if (!savedProfile) return json({ error: "配布データを保存できませんでした。もう一度お試しください。", code: "GRANT_SAVE_FAILED" }, 409);
+
+    // 運営が外部ゲーム用カードを直接配布した場合も、TERRACARD側の
+    // ログイン自動受取で回収できるよう、通常ミッション報酬と同じ受取記録を作る。
+    for (const rewardId of externalRewardIds) {
+      await ensureTerraRewardDelivery(
+        db,
+        { role: "player", user_id: user.id, username: user.username },
+        { id: "admin-grant-" + rewardId, title: "運営からの報酬配布" },
+        rewardId
+      );
+    }
+    const terraDeliveries = externalRewardIds.length
+      ? await getTerraRewardDeliveryStatus(db, user.id, request)
+      : [];
     return json({
       ok: true, playerId: body.playerId,
       added: { xp, catChuru, characterIds, externalRewardIds, stageIds, chapterIds },
-      profile: savedProfile
+      profile: savedProfile,
+      terraDeliveries
     });
   }
 
