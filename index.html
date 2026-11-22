@@ -861,13 +861,15 @@
     const configuredStages=w.__CAT_CHARACTER_STATS_CONFIG?.config?.stages||[];
     const chapterNumber=value=>{
       const text=String(value||'');
+      const numeric=Number(text);
+      if(Number.isInteger(numeric)&&numeric>=1&&numeric<=4)return numeric;
       const match=text.match(/第\s*([1-4一二三四])\s*章/);
       if(!match)return 0;
       return /^[1-4]$/.test(match[1])?Number(match[1]):(['一','二','三','四'].indexOf(match[1])+1);
     };
     if(stageClearList&&highestAdminChapter>1){
       const bypassCodes=configuredStages.filter(item=>{
-        const chapter=chapterNumber(item.series||item.chapter||item.name);
+        const chapter=chapterNumber(item.chapter)||chapterNumber(item.series)||chapterNumber(item.name);
         return chapter>0&&chapter<highestAdminChapter&&item.legacyCode;
       }).map(item=>String(item.legacyCode));
       for(const code of bypassCodes)if(!stageClearList.value.some(value=>String(value)===code))stageClearList.value.push(code);
@@ -1101,13 +1103,16 @@
           },delay);
         }
         w.__CAT_EXTERNAL_STARTED=true;
-        if(auth?.role==='player'){
-          applyScratchPlayerProfile(w).then(result=>{
-            console.info('CAT player profile applied:',result);
-            startScratchPlayerProfileSync(w);
-          }).catch(err=>console.warn('CAT player profile sync failed:',err));
-        }
-        applyScratchStageUnlocks(w).catch(err=>console.warn('CAT stage unlock sync failed:',err)).finally(()=>startScratchStageClearWatcher(w));
+        const profileReady=auth?.role==='player'
+          ? applyScratchPlayerProfile(w).then(result=>{
+              console.info('CAT player profile applied:',result);
+              startScratchPlayerProfileSync(w);
+            }).catch(err=>console.warn('CAT player profile sync failed:',err))
+          : Promise.resolve();
+        const stageUnlockReady=applyScratchStageUnlocks(w).catch(err=>console.warn('CAT stage unlock sync failed:',err));
+        // Establish the clear-list baseline only after all automatic unlocks are merged,
+        // so an operator grant cannot be mistaken for a freshly beaten stage.
+        Promise.all([profileReady,stageUnlockReady]).finally(()=>startScratchStageClearWatcher(w));
       }
       w.focus();frame.focus();
       startGate.hidden=true;
