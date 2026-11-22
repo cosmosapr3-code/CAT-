@@ -1613,8 +1613,7 @@ async function handleApi(request, env) {
         ownedCount: Array.isArray(p.owned) ? p.owned.length : 0,
         externalRewardCount: Array.isArray(p.ownedExternalRewards) ? p.ownedExternalRewards.length : 0,
         unlockedStageCount: Array.isArray(p.unlockedStages) ? p.unlockedStages.length : 0,
-        unlockedChapterCount: Array.isArray(p.unlockedChapters) ? p.unlockedChapters.length : 0,
-        chapterAccessEnabled: p.chapterAccessEnabled === true
+        unlockedChapterCount: Array.isArray(p.unlockedChapters) ? p.unlockedChapters.length : 0
       };
     });
 
