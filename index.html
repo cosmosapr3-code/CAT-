@@ -459,8 +459,8 @@
     }
     return changed;
   }
-  async function applyScratchCharacterStats(w){
-    if(w.__CAT_CHARACTER_STATS_APPLIED)return w.__CAT_CHARACTER_STATS_RESULT||{};
+  async function applyScratchCharacterStats(w,force=false){
+    if(w.__CAT_CHARACTER_STATS_APPLIED&&!force)return w.__CAT_CHARACTER_STATS_RESULT||{};
     const response=await api('/api/config');
     const characters=response.config?.characters||[];
     const stage=getScratchStage(w);
@@ -717,7 +717,7 @@
       if(!w.__CAT_EXTERNAL_STARTED){
         w.scaffolding.start();
         // Green-flag initialization must finish before the runtime values are re-applied.
-        setTimeout(()=>applyScratchCharacterStats(w).catch(err=>console.warn('CAT character stat reapply:',err)),350);
+        setTimeout(()=>applyScratchCharacterStats(w,true).catch(err=>console.warn('CAT character stat reapply:',err)),350);
         w.__CAT_EXTERNAL_STARTED=true;
         if(auth?.role==='player'){
           applyScratchPlayerProfile(w).then(result=>{
