@@ -1273,16 +1273,26 @@ async function handleApi(request, env) {
         const count = Number(input.count ?? 1);
         const hpMultiplier = Number(input.hpMultiplier ?? 1);
         const attackMultiplier = Number(input.attackMultiplier ?? 1);
+        const spawnChance = Number(input.spawnChance ?? 100);
+        const castleHpPercent = Number(input.castleHpPercent ?? 50);
+        const trigger = String(input.trigger || "time");
         if (!Number.isInteger(count) || count < 1 || count > 1000) return json({ error: "敵の出現数は1〜1000体で指定してください。" }, 400);
         if (!Number.isFinite(hpMultiplier) || hpMultiplier < 0.1 || hpMultiplier > 1000 ||
             !Number.isFinite(attackMultiplier) || attackMultiplier < 0.1 || attackMultiplier > 1000) {
           return json({ error: "敵ごとの体力・攻撃倍率は0.1〜1000の範囲で指定してください。" }, 400);
         }
+        if (!["time", "enemy_base", "player_base"].includes(trigger)) return json({ error: "敵の出現条件が正しくありません。" }, 400);
+        if (!Number.isFinite(spawnChance) || spawnChance < 1 || spawnChance > 100) return json({ error: "出現確率は1〜100%で指定してください。" }, 400);
+        if (!Number.isFinite(castleHpPercent) || castleHpPercent < 1 || castleHpPercent > 100) return json({ error: "城HP条件は1〜100%で指定してください。" }, 400);
         enemyWaves.push({
           characterId: input.characterId,
+          trigger,
+          castleHpPercent,
           at: Math.max(0, Math.min(86400, Math.floor(Number(input.at ?? (4 + index * 12)) || 0))),
           interval: Math.max(1, Math.min(3600, Math.floor(Number(input.interval ?? 18) || 18))),
-          count, hpMultiplier, attackMultiplier
+          count, spawnChance, hpMultiplier, attackMultiplier,
+          boss: input.boss === true,
+          shockwave: input.boss === true && input.shockwave === true
         });
       }
     } else {
@@ -1294,7 +1304,7 @@ async function handleApi(request, env) {
     if (!enemyWaves.length) return json({ error: "敵キャラクターを1体以上選んでください。" }, 400);
     const enemyIds = enemyWaves.map(w => w.characterId);
     const stage = { ...previous, id: TERRA_STAGE_ID, name: "TERRA CARD", series: "第3章", chapter: "第3章",
-      description: "運営が設定した敵キャラクター・出現数・倍率で戦うステージ", configured: true, multiplier,
+      description: "運営が設定した敵・出現時間・城HP条件・出現確率・倍率・ボス演出で戦うステージ", configured: true, multiplier,
       enemyWaves };
     const next = { ...config, stages: [...(config.stages || []).filter(item => item.id !== TERRA_STAGE_ID), stage] };
     const configToSave = structuredClone(next);
