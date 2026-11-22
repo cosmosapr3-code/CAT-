@@ -314,6 +314,38 @@ write_contact_sheet(enemy_items, "enemy-contact-sheet.png")
 
 summary["contact_sheets"] = ["ally-contact-sheet.png", "enemy-contact-sheet.png"]
 
+# Read text labels embedded in the original SVG costumes. These are the
+# actual gacha/enemy-book assets; converting them to raster first can lose
+# Japanese glyphs when the CI environment lacks the game's original font.
+import html as html_lib
+summary["costume_svg_text"] = []
+for target in targets:
+    target_name = target.get("name", "")
+    if target_name not in {"編成表", "mikata", "mikata2", "図鑑", "z", "Pico", "味方?teki?キャラ"}:
+        continue
+    for costume in target.get("costumes", []):
+        if costume.get("dataFormat") != "svg":
+            continue
+        try:
+            svg = archive.read(costume["md5ext"]).decode("utf-8", "ignore")
+        except Exception:
+            continue
+        found = []
+        for match in re.findall(r"<(?:text|tspan|title|desc)\\b[^>]*>(.*?)</(?:text|tspan|title|desc)>", svg, re.S | re.I):
+            value = html_lib.unescape(re.sub(r"<[^>]+>", "", match)).strip()
+            if value and re.search(r"[ぁ-んァ-ヶ一-龠]", value):
+                found.append(value)
+        for value in re.findall(r'(?:aria-label|data-name|inkscape:label)=["\\']([^"\\']+)["\\']', svg):
+            value = html_lib.unescape(value).strip()
+            if value and re.search(r"[ぁ-んァ-ヶ一-龠]", value):
+                found.append(value)
+        if found:
+            summary["costume_svg_text"].append({
+                "target": target_name,
+                "costume": str(costume.get("name", "")),
+                "texts": list(dict.fromkeys(found))
+            })
+
 # Focused extraction for admin-editor implementation: actual Scratch costume labels
 # and source lists used to show character names in the gacha and enemy encyclopedia.
 focus_targets = {
