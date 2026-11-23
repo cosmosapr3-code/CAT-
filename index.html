@@ -690,39 +690,38 @@
       ui={root,button,panel,heading};
       return ui;
     };
+    const removeObsoleteMenuTarget=target=>{
+      if(!target)return false;
+      const vm=w.Scratch?.vm||w.scaffolding?.vm;
+      const runtime=vm?.runtime;
+      const spriteName=String(target.sprite?.name||target.getName?.()||'').trim();
+      const costume=String(target.getCostumeName?.()||target.sprite?.costumes?.[target.currentCostume]?.name||'');
+      const sameSprite=runtime?.targets?.find(t=>t?.sprite===target.sprite&&t.isOriginal!==false);
+      const clone=target.isOriginal===false||(sameSprite&&target!==sameSprite);
+      const obsoleteOption=spriteName==='その他'&&clone&&['セ','ロ','ク'].includes(costume);
+      const creditSprite=/^(クレジット|credits?)$/i.test(spriteName);
+      if(!obsoleteOption&&!creditSprite)return false;
+      try{
+        if(typeof runtime?.disposeTarget==='function')runtime.disposeTarget(target);
+        else{
+          target.visible=false;
+          target.draggable=false;
+          vm?.renderer?.updateDrawableVisible?.(target.drawableID,false);
+        }
+      }catch(error){console.warn('[CAT] Could not remove obsolete menu target:',error);}
+      return true;
+    };
+    const runtime=(w.Scratch?.vm||w.scaffolding?.vm)?.runtime;
+    if(runtime&&!runtime.__CAT_OBSOLETE_MENU_HANDLER){
+      runtime.__CAT_OBSOLETE_MENU_HANDLER=removeObsoleteMenuTarget;
+      runtime.on?.('targetWasCreated',removeObsoleteMenuTarget);
+      for(const target of [...(runtime.targets||[])])removeObsoleteMenuTarget(target);
+    }
     w.__CAT_FORMATION_TOOLS_TIMER=w.setInterval(()=>{
       try{
         const targets=scratchTargets(w);
-        const miscOriginal=targets.find(t=>t?.sprite?.name==='その他'&&t.isOriginal!==false);
+        for(const target of [...targets])removeObsoleteMenuTarget(target);
         const vm=w.Scratch?.vm||w.scaffolding?.vm;
-        for(const target of targets){
-          if(!target||target.sprite?.name!=='その他')continue;
-          const costume=String(target.getCostumeName?.()||target.sprite?.costumes?.[target.currentCostume]?.name||'');
-          const clone=target.isOriginal===false||(miscOriginal&&target!==miscOriginal);
-          if(clone&&(costume==='セ'||costume==='ロ')){
-            try{
-              if(typeof vm?.runtime?.disposeTarget==='function')vm.runtime.disposeTarget(target);
-              else{
-                target.visible=false;
-                target.draggable=false;
-                vm?.renderer?.updateDrawableVisible?.(target.drawableID,false);
-              }
-            }catch(error){console.warn('[CAT] Could not remove legacy save/load control:',error);}
-          }
-        }
-        // Credits are not part of the playable interface; remove their target too.
-        for(const target of [...targets]){
-          const name=String(target?.sprite?.name||target?.getName?.()||'').trim();
-          if(!/^(クレジット|credits?)$/i.test(name))continue;
-          try{
-            if(typeof vm?.runtime?.disposeTarget==='function')vm.runtime.disposeTarget(target);
-            else{
-              target.visible=false;
-              target.draggable=false;
-              vm?.renderer?.updateDrawableVisible?.(target.drawableID,false);
-            }
-          }catch(error){console.warn('[CAT] Could not remove credits target:',error);}
-        }
         const host=makeUi();
         if(!host)return;
         const formation=targets.find(t=>t&&(t.sprite?.name==='編成表'||t.getName?.()==='編成表'));
