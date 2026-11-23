@@ -183,8 +183,7 @@ function getDb(env) {
 }
 
 const CAT_ITEM_CATALOG = [
-  { id: "catmax", name: "CATMAX" },
-  { id: "speed_up", name: "スピードアップ" }
+  { id: "catmax", name: "CATMAX" }
 ];
 function validateProfile(p) {
   if (!p || typeof p !== "object" || Array.isArray(p)) return null;
@@ -218,8 +217,7 @@ function validateProfile(p) {
     unlockedChapters,
     adminUnlockedChapters,
     clearedStages: ids(p.clearedStages, 500),
-    appliedGrantIds: ids(p.appliedGrantIds, 100),
-    usedItemRequests: ids(p.usedItemRequests, 100)
+    appliedGrantIds: ids(p.appliedGrantIds, 100)
   };
 }
 function starterProfile(config) {
@@ -227,9 +225,8 @@ function starterProfile(config) {
     catChuru: Number(config.economy?.startingCatChuru ?? 1330),
     xp: Number(config.economy?.startingXp ?? 1250),
     rainbowStars: 0,
-    items: { catmax: 0, speed_up: 0 },
+    items: { catmax: 0 },
     appliedGrantIds: [],
-    usedItemRequests: [],
     clearedStages: [],
     adminUnlockedChapters: [],
     owned: ["cat-basic", "cat-guard"],
@@ -1690,40 +1687,6 @@ async function handleApi(request, env) {
       profile: savedProfile,
       terraDeliveries
     });
-  }
-
-  // バトルアイテムは要求IDを記録し、接続切れ後の再試行でも二重消費しない。
-  if (path === "/api/items/use" && method === "POST") {
-    const auth = await requireSession(request, env);
-    if (auth.error) return auth.error;
-    if (auth.session.role !== "player") return json({ error: "プレイヤーでログインしてください。" }, 403);
-    const body = await request.json().catch(() => ({}));
-    const itemId = String(body.itemId || "");
-    const requestId = String(body.requestId || "");
-    if (itemId !== "speed_up" || !/^[A-Za-z0-9_-]{8,100}$/.test(requestId)) {
-      return json({ error: "使用するアイテムまたは要求IDが正しくありません。" }, 400);
-    }
-    const config = await loadConfig(env, request), db = getDb(env);
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const data = await readProfileForUser(db, auth.session.user_id, config);
-      if (data.profile.usedItemRequests.includes(requestId)) {
-        return json({ ok: true, alreadyUsed: true, profile: data.profile });
-      }
-      if (Number(data.profile.items.speed_up || 0) < 1) {
-        return json({ error: "スピードアップを持っていません。" }, 400);
-      }
-      data.profile.items.speed_up -= 1;
-      data.profile.usedItemRequests = [...data.profile.usedItemRequests, requestId].slice(-100);
-      try {
-        await saveProfileForUser(db, auth.session.user_id, data.profile, data.row?.profile_json ?? null);
-        return json({ ok: true, alreadyUsed: false, profile: validateProfile(data.profile) });
-      } catch (error) {
-        if (!String(error?.message || error).includes("同時に更新") || attempt === 3) {
-          return json({ error: "アイテムを使用できませんでした。再確認してください。" }, 409);
-        }
-      }
-    }
-    return json({ error: "アイテムの使用が競合しました。再確認してください。" }, 409);
   }
 
   // ガチャ
