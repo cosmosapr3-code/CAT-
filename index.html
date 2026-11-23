@@ -707,6 +707,7 @@
       try{
         if(typeof runtime?.disposeTarget==='function')runtime.disposeTarget(target);
         else{
+          runtime?.stopForTarget?.(target);
           target.visible=false;
           target.draggable=false;
           vm?.renderer?.updateDrawableVisible?.(target.drawableID,false);
@@ -727,6 +728,9 @@
         const vm=w.Scratch?.vm||w.scaffolding?.vm;
         const host=makeUi();
         if(!host)return;
+        const stage=getScratchStage(w);
+        const values=scratchList(stage,'コンボ一覧')?.value||[];
+        for(let i=values.length-1;i>=0;i--)if(String(values[i]||'').trim()==='sbk発動')values.splice(i,1);
         const formation=targets.find(t=>t&&(t.sprite?.name==='編成表'||t.getName?.()==='編成表'));
         if(!formation?.visible){
           host.root.style.display='none';
@@ -734,9 +738,6 @@
           return;
         }
         host.root.style.display='block';
-        const stage=getScratchStage(w);
-        const values=scratchList(stage,'コンボ一覧')?.value||[];
-        for(let i=values.length-1;i>=0;i--)if(String(values[i]||'').trim()==='sbk発動')values.splice(i,1);
         const active=[...new Set(values.map(value=>String(value||'').trim()).filter(key=>CAT_COMBO_LABELS[key]))];
         host.button.textContent='コンボ確認（'+active.length+'）';
         while(host.panel.childNodes.length>1)host.panel.removeChild(host.panel.lastChild);
